@@ -4,6 +4,7 @@ import {
   AlertTriangle, Smartphone, Vibrate, Mic, Volume2,
   Fingerprint, Keyboard, Hand, Power, CheckCircle, Settings
 } from "lucide-react";
+import { useSafety } from "../context/SafetyContext";
 
 const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } };
@@ -27,35 +28,12 @@ const SOSPage = () => {
   const [chatHistory, setChatHistory] = useState([
     { sender: "system", text: "Encrypted connection established.", time: "Now" }
   ]);
+  const { fireSOS } = useSafety();
 
   const triggerSOSApi = async () => {
     setSosActivated(true);
-
-    const storedUser = localStorage.getItem("user");
-    if (!storedUser) return;
-    const user = JSON.parse(storedUser);
-
-    try {
-      const response = await fetch("http://localhost:3000/api/contacts/sos", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: user._id,
-          coordinates: { lat: 28.6139, lng: 77.2090 } // Mock GPS Location
-        })
-      });
-
-      if (response.ok) {
-        setChatHistory(prev => [...prev, { sender: "system", text: "🚨 SOS Alert successfully broadcasted to your emergency contacts via Email.", time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-      } else {
-        setChatHistory(prev => [...prev, { sender: "system", text: "⚠️ You have no emergency contacts saved! They must be added in 'Inner Circle'.", time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-      }
-    } catch (err) {
-      console.error("SOS Trigger Failed", err);
-    }
-
-    // Visual reset timeout
-    setTimeout(() => setSosActivated(false), 5000);
+    fireSOS("Manual SOS Button");
+    setTimeout(() => setSosActivated(false), 3000);
   };
 
   const sendChatMessage = (e) => {

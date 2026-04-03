@@ -173,7 +173,8 @@ const SafeJourney = () => {
         setCurrentLocation(loc);
         setMapCenter(loc);
       },
-      () => { }
+      () => { },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   }, []);
 
