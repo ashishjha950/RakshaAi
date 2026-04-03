@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart, Activity, Droplets, Moon, Flame } from "lucide-react";
+import { useSafety } from "../context/SafetyContext";
 
 // ─────────────────────────────────────────────────────────────────
 // DisguiseMode — Shows a real Calculator or Wellness app skin.
@@ -10,7 +11,6 @@ import { Heart, Activity, Droplets, Moon, Flame } from "lucide-react";
 // Recordings saved to Evidence vault via localStorage.
 // ─────────────────────────────────────────────────────────────────
 
-const SECRET_PIN = "1234";
 const API = "http://localhost:3000/api";
 const SOS_KEYWORDS = ["sos", "help", "danger", "bachao", "save me", "attack", "emergency", "rape", "harassment"];
 
@@ -48,7 +48,7 @@ const saveSOSToVault = (blob, keyword) => {
 };
 
 // ── Calculator Skin ────────────────────────────────────────────────
-const CalcSkin = ({ onUnlock }) => {
+const CalcSkin = ({ onUnlock, vaultPin }) => {
   const [display, setDisplay] = useState("0");
   const [expr, setExpr] = useState("");
   const pinRef = useRef(""); // track last 4 digits silently
@@ -57,7 +57,7 @@ const CalcSkin = ({ onUnlock }) => {
     // Hidden PIN check
     if (/^\d$/.test(key)) {
       pinRef.current = (pinRef.current + key).slice(-4);
-      if (pinRef.current === SECRET_PIN) { onUnlock(); return; }
+      if (pinRef.current === vaultPin) { onUnlock(); return; }
     }
 
     if (key === "AC") { setDisplay("0"); setExpr(""); return; }
@@ -125,14 +125,14 @@ const CalcSkin = ({ onUnlock }) => {
 };
 
 // ── Wellness Skin ──────────────────────────────────────────────────
-const WellnessSkin = ({ onUnlock }) => {
+const WellnessSkin = ({ onUnlock, vaultPin }) => {
   const [mood, setMood] = useState(null);
   const pinRef = useRef("");
 
   const tapMood = (val) => {
     setMood(val);
     pinRef.current = (pinRef.current + String(val)).slice(-4);
-    if (pinRef.current === SECRET_PIN) { onUnlock(); return; }
+    if (pinRef.current === vaultPin) { onUnlock(); return; }
   };
 
   return (
@@ -203,6 +203,7 @@ const WellnessSkin = ({ onUnlock }) => {
 // ── Main DisguiseMode ──────────────────────────────────────────────
 const DisguiseMode = () => {
   const navigate = useNavigate();
+  const { vaultPin } = useSafety();
   const [skin, setSkin] = useState(() => localStorage.getItem("disguise_skin") || "calculator");
   const [disguiseActive, setDisguiseActive] = useState(false);
 
@@ -354,10 +355,25 @@ const DisguiseMode = () => {
     return (
       <div className="fixed inset-0 z-50 overflow-hidden">
         {skin === "calculator"
-          ? <CalcSkin onUnlock={handleUnlock} />
-          : <WellnessSkin onUnlock={handleUnlock} />
+          ? <CalcSkin onUnlock={handleUnlock} vaultPin={vaultPin} />
+          : <WellnessSkin onUnlock={handleUnlock} vaultPin={vaultPin} />
         }
       </div>
+    );
+  }
+
+  // ── Require Vault PIN ──────────────────────────────────────────
+  if (!vaultPin) {
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-8 text-center pt-20">
+        <div className="bg-red-50 text-red-600 rounded-3xl p-8 max-w-md mx-auto border border-red-200">
+          <h2 className="text-xl font-bold mb-3">PIN Not Set</h2>
+          <p className="text-sm mb-6">You must create a secure 4-digit Vault PIN on the Evidence page before using Disguise Mode.</p>
+          <Link to="/evidence" className="bg-red-500 text-white px-6 py-3 rounded-xl font-bold hover:bg-red-600 transition-colors inline-block">
+            Setup my PIN
+          </Link>
+        </div>
+      </motion.div>
     );
   }
 
@@ -368,7 +384,7 @@ const DisguiseMode = () => {
         <h1 className="text-3xl font-display font-bold text-slate-900">Disguise Mode</h1>
         <p className="text-slate-500 mt-1 text-sm">
           App looks like a normal utility. SOS voice detection runs in background.
-          <strong> Type 1234</strong> on the disguise screen to return.
+          <strong> Type your secure PIN</strong> on the disguise screen to return.
         </p>
       </div>
 
@@ -417,8 +433,8 @@ const DisguiseMode = () => {
             "🎤  Background voice detection: " + SOS_KEYWORDS.slice(0, 4).join(", ") + "…",
             "📧  Keyword heard → SOS email sent to Inner Circle contacts immediately",
             "🔴  Audio recording starts and runs until email is confirmed",
-            "🔑  Calculator: type 1234 to return · Wellness: tap moods 1→2→3→4",
-            "📁  SOS recordings saved to Evidence vault (unlock with PIN 1234)",
+            "🔑  Calculator: type your secure PIN to return · Wellness: tap moods 1→2→3→4",
+            "📁  SOS recordings saved to Evidence vault (unlock with your secure PIN)",
           ].map((t, i) => <p key={i} className="leading-snug">{t}</p>)}
         </div>
       </div>

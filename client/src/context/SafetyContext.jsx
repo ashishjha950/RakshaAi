@@ -223,6 +223,16 @@ export const SafetyProvider = ({ children }) => {
   };
   const endFakeCall = () => setFakeCallActive(false);
 
+  // ── Vault PIN ────────────────────────────────────────────────────────
+  const [vaultPin, setVaultPinState] = useState(
+    () => localStorage.getItem("raksha_vault_pin") || null
+  );
+
+  const setVaultPin = (pin) => {
+    setVaultPinState(pin);
+    localStorage.setItem("raksha_vault_pin", String(pin));
+  };
+
   return (
     <SafetyContext.Provider value={{
       safetyMode, setSafetyMode,
@@ -230,6 +240,7 @@ export const SafetyProvider = ({ children }) => {
       sosTriggered, detectedKeyword, sosPending, cancelSOS,
       fakeCallActive, fakeCallContact, startFakeCall, endFakeCall,
       fireSOS,
+      vaultPin, setVaultPin,
     }}>
       {children}
     </SafetyContext.Provider>
