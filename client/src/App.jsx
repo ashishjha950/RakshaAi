@@ -11,7 +11,6 @@ import DisguiseMode from './pages/DisguiseMode'
 import SettingsPage from './pages/SettingsPage'
 import CommunityPage from './pages/CommunityPage'
 import SahayakPage from './pages/SahayakPage'
-import GuptPage from './pages/GuptPage'
 import { Navigate } from 'react-router-dom'
 
 import Auth from './pages/Auth'
@@ -42,7 +41,6 @@ const App = () => {
           <Route path="/evidence" element={<EvidencePage />} />
           <Route path="/disguise" element={<DisguiseMode />} />
           <Route path="/sahayak" element={<SahayakPage />} />
-          <Route path="/gupt" element={<GuptPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/community" element={<CommunityPage />} />
         </Route>
