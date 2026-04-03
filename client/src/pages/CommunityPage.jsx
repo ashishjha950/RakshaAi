@@ -4,10 +4,12 @@ import {
     Heart, MessageCircle, MapPin, Shield, ChevronDown,
     PlusCircle, Users, Send, Loader, X, Tag, Eye, EyeOff,
     AlertTriangle, CheckCircle, Mic, MicOff, Paperclip,
-    Share2, Download, FileText, Music, Image as ImageIcon, Link, Volume2
+    Share2, Download, FileText, Music, Image as ImageIcon, Link, Volume2,
+    UserCheck, UserPlus, Radio, HandHeart
 } from "lucide-react";
 
 const API = "http://localhost:3000/api/community";
+const HELPERS_API = "http://localhost:3000/api/helpers";
 const MEDIA_BASE = "http://localhost:3000";
 
 const CATEGORIES = [
@@ -202,6 +204,14 @@ const CommunityPage = () => {
     const [user, setUser] = useState(null);
     const [successMsg, setSuccessMsg] = useState("");
 
+    // Helper Network state
+    const [isHelper, setIsHelper] = useState(false);
+    const [helperCity, setHelperCity] = useState("");
+    const [nearbyHelpers, setNearbyHelpers] = useState([]);
+    const [helperCount, setHelperCount] = useState(0);
+    const [helperLoading, setHelperLoading] = useState(false);
+    const [showHelperPanel, setShowHelperPanel] = useState(false);
+
     // Form state
     const [title, setTitle] = useState("");
     const [story, setStory] = useState("");
@@ -213,7 +223,13 @@ const CommunityPage = () => {
 
     useEffect(() => {
         const stored = localStorage.getItem("user");
-        if (stored) setUser(JSON.parse(stored));
+        if (stored) {
+            const u = JSON.parse(stored);
+            setUser(u);
+            // Restore helper status
+            setIsHelper(localStorage.getItem(`raksha_helper_${u._id}`) === "true");
+            setHelperCity(localStorage.getItem(`raksha_helper_city_${u._id}`) || "");
+        }
 
         // Handle deep-link from global voice button
         const params = new URLSearchParams(window.location.search);
@@ -225,7 +241,56 @@ const CommunityPage = () => {
         }
 
         fetchPosts();
+        fetchHelperCount();
     }, []);
+
+    const fetchHelperCount = async () => {
+        try {
+            const res = await fetch(`${HELPERS_API}/count`);
+            if (res.ok) { const d = await res.json(); setHelperCount(d.count); }
+        } catch { /**/ }
+    };
+
+    const fetchNearbyHelpers = async () => {
+        setHelperLoading(true);
+        try {
+            let url = `${HELPERS_API}/nearby`;
+            try {
+                const pos = await new Promise((res, rej) =>
+                    navigator.geolocation.getCurrentPosition(res, rej, { timeout: 4000 }));
+                url += `?lat=${pos.coords.latitude}&lng=${pos.coords.longitude}&radius=30`;
+            } catch { /**/ }
+            const res = await fetch(url);
+            if (res.ok) setNearbyHelpers(await res.json());
+        } catch { /**/ } finally { setHelperLoading(false); }
+    };
+
+    const toggleHelper = async () => {
+        if (!user) return;
+        const next = !isHelper;
+        setIsHelper(next);
+        localStorage.setItem(`raksha_helper_${user._id}`, String(next));
+        try {
+            if (next) {
+                let lat = null, lng = null;
+                try {
+                    const pos = await new Promise((res, rej) =>
+                        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 4000 }));
+                    lat = pos.coords.latitude; lng = pos.coords.longitude;
+                } catch { /**/ }
+                await fetch(`${HELPERS_API}/register`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: user._id, city: helperCity, lat, lng }),
+                });
+            } else {
+                await fetch(`${HELPERS_API}/unregister`, {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: user._id }),
+                });
+            }
+            fetchHelperCount();
+        } catch { /**/ }
+    };
 
     const fetchPosts = async () => {
         try {
@@ -304,12 +369,127 @@ const CommunityPage = () => {
                 <div>
                     <h1 className="text-3xl font-display font-bold text-slate-900">Community</h1>
                     <p className="text-slate-500 mt-1 text-sm">A safe space to share your story, support others, and heal together.</p>
+                    {helperCount > 0 && (
+                        <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                            <UserCheck className="w-3.5 h-3.5" />
+                            <strong>{helperCount}</strong> verified helpers are active in this network
+                        </p>
+                    )}
                 </div>
-                <button onClick={() => setShowForm(s => !s)}
-                    className="bg-gradient-to-br from-rose-500 via-pink-600 to-purple-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow-md hover:shadow-xl transition-all hover:-translate-y-0.5">
-                    <PlusCircle className="w-4 h-4" /> Share Your Story
-                </button>
+                <div className="flex items-center gap-2">
+                    {/* Helper toggle */}
+                    <button
+                        onClick={() => setShowHelperPanel(v => !v)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold border transition-all
+                            ${isHelper
+                                ? "bg-emerald-500 text-white border-emerald-400"
+                                : "bg-white text-slate-600 border-slate-200 hover:border-emerald-300 hover:text-emerald-600"
+                            }`}
+                    >
+                        <HandHeart className="w-3.5 h-3.5" />
+                        {isHelper ? "Helper: ON" : "Be a Helper"}
+                    </button>
+                    <button onClick={() => setShowForm(s => !s)}
+                        className="bg-gradient-to-br from-rose-500 via-pink-600 to-purple-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow-md hover:shadow-xl transition-all hover:-translate-y-0.5">
+                        <PlusCircle className="w-4 h-4" /> Share Your Story
+                    </button>
+                </div>
             </motion.div>
+
+            {/* ── Helper Network Panel ────────────────────────────────── */}
+            <AnimatePresence>
+                {showHelperPanel && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
+                        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 rounded-2xl p-5 border border-emerald-200 shadow-md">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-emerald-500 flex items-center justify-center">
+                                        <UserCheck className="w-4 h-4 text-white" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-emerald-900 text-sm">Helper Network</h3>
+                                        <p className="text-xs text-emerald-600">Register as someone who can help in an emergency</p>
+                                    </div>
+                                </div>
+                                <button onClick={() => setShowHelperPanel(false)} className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center hover:bg-emerald-200">
+                                    <X className="w-3.5 h-3.5 text-emerald-700" />
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                                {/* City input */}
+                                <div>
+                                    <label className="text-xs font-semibold text-emerald-800 block mb-1">Your City</label>
+                                    <input
+                                        value={helperCity}
+                                        onChange={e => {
+                                            setHelperCity(e.target.value);
+                                            if (user) localStorage.setItem(`raksha_helper_city_${user._id}`, e.target.value);
+                                        }}
+                                        placeholder="e.g. New Delhi, Mumbai…"
+                                        className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-400"
+                                    />
+                                    <p className="text-[10px] text-emerald-500 mt-1">Only city is shared — never your exact address</p>
+                                </div>
+
+                                {/* Helper toggle switch */}
+                                <div className="flex items-center">
+                                    <div className={`flex-1 rounded-xl p-4 border-2 text-center cursor-pointer transition-all
+                                        ${isHelper ? "bg-emerald-500 border-emerald-400 text-white" : "bg-white border-emerald-200 text-emerald-700 hover:border-emerald-400"}`}
+                                        onClick={toggleHelper}
+                                    >
+                                        <UserPlus className="w-5 h-5 mx-auto mb-1" />
+                                        <p className="text-xs font-bold">{isHelper ? "✅ You are a Helper" : "Register as Helper"}</p>
+                                        <p className="text-[10px] mt-0.5 opacity-70">{isHelper ? "Tap to opt out" : "Help others in emergencies"}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Find nearby helpers */}
+                            <div className="border-t border-emerald-200 pt-4">
+                                <div className="flex items-center justify-between mb-3">
+                                    <h4 className="text-sm font-semibold text-emerald-900">Helpers Near You</h4>
+                                    <button onClick={() => { fetchNearbyHelpers(); }}
+                                        className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-xl font-semibold transition-colors">
+                                        <Radio className="w-3 h-3" /> Find Helpers
+                                    </button>
+                                </div>
+                                {helperLoading && (
+                                    <div className="flex items-center justify-center py-6">
+                                        <Loader className="w-5 h-5 text-emerald-400 animate-spin" />
+                                    </div>
+                                )}
+                                {!helperLoading && nearbyHelpers.length === 0 && (
+                                    <p className="text-xs text-emerald-600 text-center py-4">
+                                        Click "Find Helpers" to see who's in your area
+                                    </p>
+                                )}
+                                {!helperLoading && nearbyHelpers.length > 0 && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        {nearbyHelpers.map((h, i) => (
+                                            <div key={h.id || i} className="bg-white rounded-xl px-4 py-3 border border-emerald-100 flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                                    {(h.name || "H")[0].toUpperCase()}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-semibold text-slate-800 truncate">{h.name}</p>
+                                                    <p className="text-[10px] text-emerald-600 flex items-center gap-1">
+                                                        <MapPin className="w-2.5 h-2.5" />
+                                                        {h.city || "Unknown"}
+                                                        {h.distance !== null && ` · ${h.distance.toFixed(1)} km`}
+                                                    </p>
+                                                </div>
+                                                <UserCheck className="w-3.5 h-3.5 text-emerald-500 ml-auto shrink-0" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Success toast */}
             <AnimatePresence>

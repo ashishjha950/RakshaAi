@@ -5,8 +5,9 @@ import {
     Bot, Layers, ArrowLeft, Send, Mic, MicOff, AlertTriangle,
     Camera, MapPin, MessageSquare, ChevronRight, Sparkles,
     Shield, X, Navigation, Phone, FileText, RefreshCw,
-    Radio, Zap
+    Radio, Zap, PhoneCall
 } from "lucide-react";
+import { useSafety } from "../context/SafetyContext";
 
 // ─────────────────────────────────────────────────────────────────────
 // SahayakPage — AI Wingman with Internal & External modes
@@ -213,9 +214,10 @@ const InternalMode = ({ onBack }) => {
     );
 };
 
-// ── External Mode — Floating Quick-Action Overlay ────────────────────
+// ── External Mode ────────────────────────────────────────────────────
 const ExternalMode = ({ onBack }) => {
     const navigate = useNavigate();
+    const { startFakeCall } = useSafety();
     const [sosSent, setSosSent] = useState(false);
     const [locShared, setLocShared] = useState(false);
     const [recActive, setRecActive] = useState(false);
@@ -314,6 +316,11 @@ const ExternalMode = ({ onBack }) => {
             label: "Call 112", sublabel: "National emergency number", icon: Phone,
             gradient: "from-blue-500 to-indigo-600", shadow: "shadow-blue-400/30",
             onClick: () => window.open("tel:112"), done: false, doneLabel: ""
+        },
+        {
+            label: "Fake Call", sublabel: "Simulate someone on the line", icon: PhoneCall,
+            gradient: "from-emerald-500 to-teal-600", shadow: "shadow-emerald-400/30",
+            onClick: () => startFakeCall("Mom 💛"), done: false, doneLabel: ""
         },
         {
             label: "Safe Journey", sublabel: "Start tracking your route", icon: Navigation,
@@ -451,6 +458,8 @@ const SahayakPage = () => {
                         "📍 Share live GPS location",
                         "🎙️ Silent audio recording",
                         "📞 Direct emergency call links",
+                        "📲 Fake Call — deter threats with illusion",
+                        "🛡️ Auto-SOS via Global Voice Watch",
                     ].map((f, i) => <p key={i}>{f}</p>)}
                 </div>
             </motion.div>

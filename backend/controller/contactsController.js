@@ -58,10 +58,32 @@ export const triggerSOS = async (req, res) => {
             ? `https://www.google.com/maps/search/?api=1&query=${coordinates.lat},${coordinates.lng}`
             : "https://www.google.com/maps";
 
+        let nearbyHelpersCount = 0;
+
+        // Alert nearby helpers within 3km if coordinates exist
+        if (coordinates && coordinates.lat && coordinates.lng) {
+            const helpers = await User.find({ isHelper: true }).select("helperLocation");
+            helpers.forEach(h => {
+                if (h._id.toString() === userId) return; // skip self
+                if (h.helperLocation?.lat && h.helperLocation?.lng) {
+                    const R = 6371;
+                    const dLat = (h.helperLocation.lat - coordinates.lat) * Math.PI / 180;
+                    const dLon = (h.helperLocation.lng - coordinates.lng) * Math.PI / 180;
+                    const a = Math.sin(dLat / 2) ** 2 + Math.cos(coordinates.lat * Math.PI / 180) * Math.cos(h.helperLocation.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+                    const dist = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                    
+                    if (dist <= 3) nearbyHelpersCount++;
+                }
+            });
+        }
+
         if (user.emergencyContacts && user.emergencyContacts.length > 0) {
             // Fire SOS email asynchronously
             sendSOSEmail(user.emergencyContacts, user.name, locUrl);
-            res.json({ message: "SOS successfully broadcasted to inner circle" });
+            res.json({ 
+                message: "SOS successfully broadcasted to inner circle",
+                nearbyHelpersAlerted: nearbyHelpersCount
+            });
         } else {
             res.status(400).json({ message: "No emergency contacts defined to notify!" });
         }

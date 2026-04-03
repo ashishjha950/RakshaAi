@@ -8,6 +8,7 @@ import authRoutes from "./routes/authRoutes.js";
 import contactsRoutes from "./routes/contactsRoutes.js";
 import communityRoutes from "./routes/communityRoutes.js";
 import evidenceRoutes from "./routes/evidenceRoutes.js";
+import helperRoutes from "./routes/helperRoutes.js";
 import cors from "cors";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/contacts", contactsRoutes);
 app.use("/api/community", communityRoutes);
 app.use("/api/evidence", evidenceRoutes);
+app.use("/api/helpers", helperRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));

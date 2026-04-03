@@ -1,13 +1,15 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   MapPin, Clock, Play, Pause, Square,
   AlertTriangle, CheckCircle, Shield, Locate,
-  Zap, TrendingUp, Eye, ChevronDown, ChevronUp, Info
+  Zap, TrendingUp, Eye, ChevronDown, ChevronUp, Info,
+  Navigation2, Radio
 } from "lucide-react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+import { useSafety } from "../context/SafetyContext";
 
 // ── Leaflet icon fix ───────────────────────────────────────────
 delete L.Icon.Default.prototype._getIconUrl;
@@ -132,15 +134,19 @@ const haversineDist = (a, b) => {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 };
 
+// ── Haversine helper (already defined above) ─ reuse ─────────────
 // ── Main Component ─────────────────────────────────────────────
 const SafeJourney = () => {
+  const { fireSOS } = useSafety();
+
   const [journeyState, setJourneyState] = useState("idle");
   const [source, setSource] = useState("");
   const [destination, setDestination] = useState("");
   const [currentLocation, setCurrentLocation] = useState(null);
+  const [livePos, setLivePos] = useState(null); // real-time GPS during journey
   const [route, setRoute] = useState([]);
   const [safeRoute, setSafeRoute] = useState([]);
-  const [activeRoute, setActiveRoute] = useState("standard"); // 'standard' | 'safe'
+  const [activeRoute, setActiveRoute] = useState("standard");
   const [sourcePos, setSourcePos] = useState(null);
   const [destPos, setDestPos] = useState(null);
   const [duration, setDuration] = useState(0);
@@ -150,6 +156,15 @@ const SafeJourney = () => {
   const [expandedThreat, setExpandedThreat] = useState(null);
   const [analysisStep, setAnalysisStep] = useState(0);
   const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]);
+
+  // ── Active monitoring refs ─────────────────────────────────────
+  const [monitorAlert, setMonitorAlert] = useState(null); // { type, msg }
+  const watchIdRef = useRef(null);
+  const lastMoveRef = useRef(Date.now()); // timestamp of last significant movement
+  const stopTimerRef = useRef(null);
+  const sosFiredRef = useRef(false);
+  const activeRouteRef = useRef(route);
+  activeRouteRef.current = route.length > 1 ? route : safeRoute;
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -162,11 +177,72 @@ const SafeJourney = () => {
     );
   }, []);
 
+  // ── Duration counter ──────────────────────────────────────────
   useEffect(() => {
     let interval;
     if (journeyState === "active") interval = setInterval(() => setDuration(p => p + 1), 1000);
     return () => clearInterval(interval);
   }, [journeyState]);
+
+  // ── Alert and auto-SOS helper ─────────────────────────────────
+  const triggerMonitorAlert = useCallback((type, msg) => {
+    setMonitorAlert({ type, msg });
+    if (!sosFiredRef.current) {
+      sosFiredRef.current = true;
+      fireSOS(`journey-${type}`);
+      // Reset after 30s so it can fire again if needed
+      setTimeout(() => { sosFiredRef.current = false; }, 30000);
+    }
+  }, [fireSOS]);
+
+  // ── GPS watch during active journey ───────────────────────────
+  useEffect(() => {
+    if (journeyState !== "active") {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      clearInterval(stopTimerRef.current);
+      return;
+    }
+
+    lastMoveRef.current = Date.now();
+
+    // Poll every 10s for unusual stop (no movement >5 min)
+    stopTimerRef.current = setInterval(() => {
+      const idleMs = Date.now() - lastMoveRef.current;
+      if (idleMs > 5 * 60 * 1000) { // 5 minutes
+        triggerMonitorAlert("unusual-stop",
+          "⚠️ You haven't moved for 5 minutes. Sending SOS to your Inner Circle.");
+      }
+    }, 15000);
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        const pt = [pos.coords.latitude, pos.coords.longitude];
+        setLivePos(pt);
+        setMapCenter(pt);
+        lastMoveRef.current = Date.now();
+
+        // Route deviation check (>300m from nearest route point)
+        const currentRoute = activeRouteRef.current;
+        if (currentRoute.length > 1) {
+          const minDist = Math.min(...currentRoute.map(rp => haversineDist(pt, rp))) * 1000; // metres
+          if (minDist > 300) {
+            triggerMonitorAlert("deviation",
+              `⚠️ You appear to be ${Math.round(minDist)}m off your planned route. SOS alert sent.`);
+          }
+        }
+      },
+      () => { },
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+    );
+
+    return () => {
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+      clearInterval(stopTimerRef.current);
+    };
+  }, [journeyState, triggerMonitorAlert]);
 
   const formatTime = () => {
     const h = Math.floor(duration / 3600).toString().padStart(2, "0");
@@ -213,15 +289,54 @@ const SafeJourney = () => {
     } catch { return [start, end]; }
   };
 
-  // Filter threats near ANY point on the route (within 2km)
+  // ── Dynamic Risk Intelligence ────────────────────────────────
+  const getDynamicSeverity = (threat) => {
+    const hour = new Date().getHours();
+    const isNight = hour >= 19 || hour <= 5; // 7 PM to 5 AM
+
+    let sev = threat.severity;
+    // Bump severity at night for relevant threats
+    if (isNight && (threat.time.includes("Night") || threat.time.includes("All Hours") || threat.time.includes("Late Night") || threat.time.includes("Evening"))) {
+      if (sev === "medium") return "high";
+      if (sev === "high") return "critical";
+    }
+    return sev;
+  };
+
+  // Filter threats near ANY point on the route (within 2km) and apply dynamic severity
   const analyzeRoute = (routeCoords) =>
-    ALL_INDIA_THREATS.filter(threat =>
-      routeCoords.some(pt => haversineDist(pt, threat.pos) < 2.0)
-    );
+    ALL_INDIA_THREATS
+      .filter(threat => routeCoords.some(pt => haversineDist(pt, threat.pos) < 2.0))
+      .map(threat => ({ ...threat, dynamicSeverity: getDynamicSeverity(threat) }));
 
   // Filter threats near the SOURCE point (city overview, 20km radius)
   const getLocalThreats = (pos) =>
-    ALL_INDIA_THREATS.filter(t => haversineDist(pos, t.pos) < 20).slice(0, 6);
+    ALL_INDIA_THREATS
+      .filter(t => haversineDist(pos, t.pos) < 20)
+      .map(threat => ({ ...threat, dynamicSeverity: getDynamicSeverity(threat) }))
+      .slice(0, 6);
+
+  const getLiveRisk = () => {
+    if (!livePos) return null;
+    let closestDist = Infinity;
+    let worstSev = "safe";
+
+    routeThreats.forEach(t => {
+      const dist = haversineDist(livePos, t.pos);
+      if (dist < closestDist) closestDist = dist;
+      if (dist < 1.0) { // within 1km
+        if (t.dynamicSeverity === "critical") worstSev = "critical";
+        else if (t.dynamicSeverity === "high" && worstSev !== "critical") worstSev = "high";
+        else if (t.dynamicSeverity === "medium" && worstSev === "safe") worstSev = "medium";
+      }
+    });
+
+    if (worstSev === "safe") return { score: closestDist < 2 ? "Approaching Zone" : "Safe", color: "emerald" };
+    if (worstSev === "critical") return { score: "Critical Danger", color: "rose" };
+    if (worstSev === "high") return { score: "High Risk Nearby", color: "orange" };
+    return { score: "Moderate Risk", color: "amber" };
+  };
+  const liveRisk = getLiveRisk();
 
   const startJourney = async () => {
     if (!source || !destination) { alert("Please enter source and destination"); return; }
@@ -278,6 +393,9 @@ const SafeJourney = () => {
     setAnalysisStep(0);
     setSourcePos(null);
     setDestPos(null);
+    setLivePos(null);
+    setMonitorAlert(null);
+    sosFiredRef.current = false;
   };
 
   // Google Maps direction link
@@ -290,21 +408,46 @@ const SafeJourney = () => {
   };
 
   const riskScore = routeThreats.length === 0 ? "Safe" :
-    routeThreats.some(t => t.severity === "critical") ? "Critical" :
-      routeThreats.some(t => t.severity === "high") ? "High Risk" : "Moderate";
+    routeThreats.some(t => t.dynamicSeverity === "critical") ? "Critical" :
+      routeThreats.some(t => t.dynamicSeverity === "high") ? "High Risk" : "Moderate";
   const riskColor = { Safe: "emerald", Critical: "rose", "High Risk": "orange", Moderate: "amber" }[riskScore];
 
   // Threats shown on MAP = route threats if journey active, else nearby threats based on user GPS
   const mapThreats = analysisStep === 2 ? routeThreats : (currentLocation ? getLocalThreats(currentLocation) : []);
 
+  // Live GPS icon
+  const liveIcon = new L.Icon({
+    iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png",
+    shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+    iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41]
+  });
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 pb-8">
+
+      {/* Monitor Alert Banner */}
+      <AnimatePresence>
+        {monitorAlert && (
+          <motion.div initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -20, opacity: 0 }}
+            className="rounded-2xl border-2 border-red-400 bg-red-50 px-5 py-4 flex items-center gap-3"
+          >
+            <div className="w-10 h-10 rounded-xl bg-red-500 flex items-center justify-center shrink-0 animate-pulse">
+              <Radio className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-red-800 text-sm">{monitorAlert.msg}</p>
+              <p className="text-xs text-red-600 mt-0.5">SOS alert dispatched automatically to your Inner Circle</p>
+            </div>
+            <button onClick={() => setMonitorAlert(null)} className="text-red-400 hover:text-red-600 text-lg font-bold">✕</button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-3xl font-display font-bold text-slate-900">Safe Journey</h1>
-          <p className="text-slate-500 mt-1 text-sm">AI threat analysis powered by NCRB 2023 crime statistics — coverage across all India</p>
+          <p className="text-slate-500 mt-1 text-sm">AI threat analysis · Active GPS monitoring · Auto-SOS on deviation or unusual stop</p>
         </div>
         {analysisStep === 2 && (
           <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }}
@@ -401,6 +544,17 @@ const SafeJourney = () => {
 
                 {sourcePos && <Marker position={sourcePos} icon={greenIcon}><Popup>📍 Start</Popup></Marker>}
                 {destPos && <Marker position={destPos}><Popup>🏁 Destination</Popup></Marker>}
+                {/* Live GPS dot */}
+                {livePos && journeyState === "active" && (
+                  <Marker position={livePos} icon={liveIcon}>
+                    <Popup>
+                      <div className="text-xs">
+                        <strong className="text-blue-700">📡 Your live location</strong><br />
+                        <span className="text-slate-500">{livePos[0].toFixed(5)}, {livePos[1].toFixed(5)}</span>
+                      </div>
+                    </Popup>
+                  </Marker>
+                )}
               </MapContainer>
             </div>
 
@@ -441,6 +595,32 @@ const SafeJourney = () => {
                   {analysisStep === 2 ? routeThreats.length : "—"}
                 </span>
               </div>
+              {journeyState === "active" && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Live Risk</span>
+                    <span className={`font-semibold text-${liveRisk?.color}-600`}>
+                      {liveRisk?.score || "Calculating…"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">GPS Monitor</span>
+                    <span className="text-emerald-600 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse inline-block" />
+                      Active
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Live Position</span>
+                    <span className="text-blue-600 font-semibold text-xs mt-0.5">
+                      {livePos ? `${livePos[0].toFixed(4)}, ${livePos[1].toFixed(4)}` : "Acquiring…"}
+                    </span>
+                  </div>
+                  <div className="mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700">
+                    🛡️ Auto-SOS triggers if you deviate &gt;300m or stop for 5+ minutes
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -545,8 +725,8 @@ const SafeJourney = () => {
                     <div className="space-y-2">
                       {routeThreats.map((t, i) => (
                         <div key={t.id} className="flex gap-2.5 items-start">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.severity === "critical" ? "bg-rose-500/20 text-rose-400" :
-                              t.severity === "high" ? "bg-orange-500/20 text-orange-400" :
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.dynamicSeverity === "critical" ? "bg-rose-500/20 text-rose-400" :
+                              t.dynamicSeverity === "high" ? "bg-orange-500/20 text-orange-400" :
                                 "bg-amber-500/20 text-amber-400"
                             }`}>{i + 1}</span>
                           <div>
@@ -575,7 +755,8 @@ const SafeJourney = () => {
                 </div>
                 : <div className="space-y-3 max-h-[380px] overflow-y-auto pr-0.5">
                   {routeThreats.map(threat => {
-                    const col = severityColor[threat.severity];
+                    const col = severityColor[threat.dynamicSeverity] || "slate";
+                    const label = severityLabel[threat.dynamicSeverity] || "Unknown";
                     const expanded = expandedThreat === threat.id;
                     return (
                       <motion.div key={threat.id} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}

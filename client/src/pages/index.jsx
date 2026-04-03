@@ -1,9 +1,11 @@
 import { motion } from "framer-motion";
 import {
   Shield, Navigation, AlertTriangle, Users, Map, Camera, EyeOff,
-  TrendingUp, Clock, CheckCircle, ArrowUpRight, Activity
+  TrendingUp, CheckCircle, ArrowUpRight, Activity, Bot, ScanFace,
+  Wifi, WifiOff, Phone, Zap
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useSafety } from "../context/SafetyContext";
 
 const statCards = [
   { label: "Active Journeys", value: "0", icon: Navigation, change: "Start one", color: "text-emerald-500" },
@@ -31,12 +33,58 @@ const container = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } 
 const item = { hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } };
 
 const Index = () => {
+  const { safetyMode, globalSosWatch, setGlobalSosWatch, startFakeCall } = useSafety();
+  const isGuardian = safetyMode === "guardian";
+
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
+
+      {/* ── Adaptive Mode Banner ─────────────────────────────────── */}
+      <motion.div variants={item}
+        className={`rounded-2xl px-5 py-4 border flex items-center gap-4 transition-all
+          ${isGuardian
+            ? "bg-slate-900 border-rose-900/40 text-white"
+            : "bg-gradient-to-r from-violet-500/10 to-indigo-500/10 border-violet-200"
+          }`}
+      >
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0
+          ${isGuardian
+            ? "bg-gradient-to-br from-rose-700 to-pink-900"
+            : "bg-gradient-to-br from-violet-500 to-indigo-600"
+          }`}>
+          {isGuardian ? <ScanFace className="w-6 h-6 text-white" /> : <Bot className="w-6 h-6 text-white" />}
+        </div>
+        <div className="flex-1">
+          <p className={`text-sm font-bold ${isGuardian ? "text-rose-400" : "text-violet-700"}`}>
+            {isGuardian ? "🛡️ Guardian Mode Active" : "🤖 Sahayak Mode Active"}
+          </p>
+          <p className={`text-xs mt-0.5 ${isGuardian ? "text-slate-400" : "text-violet-600/70"}`}>
+            {isGuardian
+              ? "Stealth protection — app runs in covert mode. Sidebar shows only critical tools."
+              : "Full interactive protection — AI wingman, journey tracking, and community access enabled."
+            }
+          </p>
+        </div>
+        {/* SOS Watch toggle pill */}
+        <button
+          onClick={() => setGlobalSosWatch(!globalSosWatch)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold border shrink-0 transition-all
+            ${globalSosWatch
+              ? "bg-red-500 text-white border-red-400 animate-pulse"
+              : isGuardian
+                ? "bg-slate-800 text-slate-400 border-slate-700 hover:text-red-400"
+                : "bg-white text-slate-500 border-slate-200 hover:border-red-300 hover:text-red-600"
+            }`}
+        >
+          {globalSosWatch ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+          <span className="hidden sm:inline">{globalSosWatch ? "SOS Watch ON" : "SOS Watch OFF"}</span>
+        </button>
+      </motion.div>
+
       {/* Header */}
       <motion.div variants={item}>
-        <h1 className="text-3xl font-display font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 mt-1">Welcome back. Your safety systems are active.</p>
+        <h1 className={`text-3xl font-display font-bold ${isGuardian ? "text-white" : "text-slate-900"}`}>Dashboard</h1>
+        <p className={`mt-1 ${isGuardian ? "text-slate-400" : "text-slate-500"}`}>Welcome back. Your safety systems are active.</p>
       </motion.div>
 
       {/* Stats */}
@@ -57,19 +105,31 @@ const Index = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Quick Actions */}
         <motion.div variants={item} className="lg:col-span-2 space-y-4">
-          <h2 className="text-lg font-display font-semibold text-slate-900">Quick Actions</h2>
+          <div className="flex items-center justify-between">
+            <h2 className={`text-lg font-display font-semibold ${isGuardian ? "text-white" : "text-slate-900"}`}>Quick Actions</h2>
+            {/* Fake Call shortcut - only in Sahayak */}
+            {!isGuardian && (
+              <button
+                onClick={() => startFakeCall("Mom 💛")}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold hover:bg-emerald-100 transition-colors"
+              >
+                <Phone className="w-3.5 h-3.5" /> Fake Call
+              </button>
+            )}
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {quickActions.map((action) => (
               <Link
                 key={action.to}
                 to={action.to}
-                className="bg-white rounded-2xl p-4 border border-slate-200 shadow-md hover:shadow-lg hover:shadow-rose-500/10 transition-all duration-300 group"
+                className={`rounded-2xl p-4 border shadow-md hover:shadow-lg hover:shadow-rose-500/10 transition-all duration-300 group
+                  ${isGuardian ? "bg-slate-800 border-slate-700" : "bg-white border-slate-200"}`}
               >
                 <div className={`w-10 h-10 rounded-xl ${action.gradient} flex items-center justify-center mb-3 group-hover:shadow-lg group-hover:shadow-rose-500/30 transition-shadow`}>
                   <action.icon className="w-5 h-5 text-white" />
                 </div>
-                <h3 className="font-display font-semibold text-sm text-slate-900">{action.label}</h3>
-                <p className="text-xs text-slate-500 mt-0.5">{action.desc}</p>
+                <h3 className={`font-display font-semibold text-sm ${isGuardian ? "text-slate-200" : "text-slate-900"}`}>{action.label}</h3>
+                <p className={`text-xs mt-0.5 ${isGuardian ? "text-slate-500" : "text-slate-500"}`}>{action.desc}</p>
                 <ArrowUpRight className="w-4 h-4 text-slate-300 mt-2 group-hover:text-rose-500 transition-colors" />
               </Link>
             ))}

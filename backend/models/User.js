@@ -25,7 +25,16 @@ const userSchema = new mongoose.Schema(
                 phone: String,
                 relation: String,
             }
-        ]
+        ],
+        isHelper: {
+            type: Boolean,
+            default: false,
+        },
+        helperLocation: {
+            city: { type: String, default: "" },
+            lat: { type: Number, default: null },
+            lng: { type: Number, default: null },
+        },
     },
     { timestamps: true }
 );
