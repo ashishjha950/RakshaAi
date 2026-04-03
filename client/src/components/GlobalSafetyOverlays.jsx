@@ -13,6 +13,7 @@ export const GlobalSOSBanner = () => {
     <AnimatePresence>
       {sosTriggered && (
         <motion.div
+          key="sos-banner"
           initial={{ y: -60, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: -60, opacity: 0 }}
@@ -116,6 +117,7 @@ export const FakeCallOverlay = () => {
     <AnimatePresence>
       {fakeCallActive && (
         <motion.div
+          key="fake-call"
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
@@ -174,8 +176,12 @@ export const FakeCallOverlay = () => {
 
             {/* End Call */}
             <button
-              onClick={endFakeCall}
-              className="w-16 h-16 mx-auto bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center shadow-lg shadow-red-500/40 transition-all active:scale-90"
+              onClick={(e) => {
+                e.stopPropagation();
+                endFakeCall();
+              }}
+              type="button"
+              className="relative z-50 w-16 h-16 mx-auto bg-red-500 hover:bg-red-600 rounded-full flex items-center justify-center shadow-lg shadow-red-500/40 transition-all active:scale-90"
             >
               <PhoneOff className="w-7 h-7 text-white" />
             </button>
