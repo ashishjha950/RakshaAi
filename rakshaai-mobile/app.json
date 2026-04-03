@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "RakshaAI",
+    "slug": "rakshaai-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0A0F",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0F"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        { "cameraPermission": "RakshaAI needs camera access for evidence capture." }
+      ],
+      [
+        "expo-av",
+        { "microphonePermission": "RakshaAI needs microphone access for SOS voice detection." }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "RakshaAI needs background location for SafeJourney monitoring.",
+          "locationAlwaysPermission": "RakshaAI needs always-on location to detect if you stop and alert your circle.",
+          "locationWhenInUsePermission": "RakshaAI uses your location to show nearby helpers and track your journey."
+        }
+      ],
+      "expo-local-authentication",
+      "expo-notifications",
+      "expo-secure-store"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.rakshaai.mobile",
+      "infoPlist": {
+        "UIBackgroundModes": ["audio", "location", "fetch", "remote-notification"],
+        "NSMicrophoneUsageDescription": "RakshaAI listens for SOS trigger words to keep you safe.",
+        "NSCameraUsageDescription": "RakshaAI captures evidence discreetly in DisguiseMode.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "RakshaAI tracks your journey to alert your circle if you stop.",
+        "NSLocationAlwaysUsageDescription": "RakshaAI needs always-on location to monitor your safety in background.",
+        "NSFaceIDUsageDescription": "RakshaAI uses Face ID to protect your evidence vault."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0F"
+      },
+      "package": "com.rakshaai.mobile",
+      "permissions": [
+        "RECORD_AUDIO",
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "FOREGROUND_SERVICE_MICROPHONE",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE",
+        "USE_BIOMETRIC",
+        "USE_FINGERPRINT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "TODO_ADD_EAS_PROJECT_ID"
+      }
+    }
+  }
+}

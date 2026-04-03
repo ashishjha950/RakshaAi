@@ -1,0 +1,4 @@
+﻿src/screens/EvidenceScreen.tsx(163,41): error TS2339: Property 'documentDirectory' does not exist on type 'typeof import("C:/Users/ishan/OneDrive/Desktop/RakshaAi/RakshaAi/rakshaai-mobile/node_modules/expo-file-system/build/index")'.
+src/screens/EvidenceScreen.tsx(163,91): error TS2339: Property 'cacheDirectory' does not exist on type 'typeof import("C:/Users/ishan/OneDrive/Desktop/RakshaAi/RakshaAi/rakshaai-mobile/node_modules/expo-file-system/build/index")'.
+src/screens/EvidenceScreen.tsx(188,42): error TS2339: Property 'documentDirectory' does not exist on type 'typeof import("C:/Users/ishan/OneDrive/Desktop/RakshaAi/RakshaAi/rakshaai-mobile/node_modules/expo-file-system/build/index")'.
+src/screens/EvidenceScreen.tsx(188,92): error TS2339: Property 'cacheDirectory' does not exist on type 'typeof import("C:/Users/ishan/OneDrive/Desktop/RakshaAi/RakshaAi/rakshaai-mobile/node_modules/expo-file-system/build/index")'.
