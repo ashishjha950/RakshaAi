@@ -7,8 +7,9 @@ import {
   KeyRound, WifiOff, Wifi, X, Upload, CloudUpload
 } from "lucide-react";
 
+import { useSafety } from "../context/SafetyContext";
+
 const API = "http://localhost:3000/api";
-const SECRET_PIN = "1234";
 const SOS_KEYWORDS = ["sos", "help", "danger", "bachao", "save me", "attack", "rape", "sexual", "harassment", "emergency"];
 const LS_KEY = "raksha_evidence_cloud"; // localStorage key for Cloudinary URLs
 
@@ -37,6 +38,8 @@ const uploadToCloudinary = async (blob, mimeType, isSos = false) => {
 
 // ─── EvidencePage ──────────────────────────────────────────────────
 const EvidencePage = () => {
+  const { vaultPin, setVaultPin } = useSafety();
+
   // Load from localStorage — only keep entries with real Cloudinary URLs (publicId) or notes
   // Blob URLs (blob:http://...) don't survive page refresh, so we drop them
   const [files, setFiles] = useState(() => {
@@ -326,8 +329,17 @@ const EvidencePage = () => {
     if (next.length > 4) return;
     setPin(next); setPinError(false);
     if (next.length === 4) {
-      if (next === SECRET_PIN) { setVaultUnlocked(true); setPin(""); }
-      else { setPinError(true); setTimeout(() => { setPin(""); setPinError(false); }, 700); }
+      if (!vaultPin) {
+        setVaultPin(next);
+        setVaultUnlocked(true);
+        setPin("");
+      } else if (next === vaultPin) {
+        setVaultUnlocked(true);
+        setPin("");
+      } else {
+        setPinError(true);
+        setTimeout(() => { setPin(""); setPinError(false); }, 700);
+      }
     }
   };
 
@@ -346,7 +358,7 @@ const EvidencePage = () => {
       <motion.div variants={item}>
         <h1 className="text-3xl font-display font-bold text-slate-900">Evidence Capture</h1>
         <p className="text-slate-500 mt-1 text-sm">
-          Recordings auto-upload to <strong>Cloudinary</strong> — survive page refresh. Vault unlocked with PIN 1234.
+          Recordings auto-upload to <strong>Cloudinary</strong> — survive page refresh. Vault unlocked with your secure PIN.
         </p>
       </motion.div>
 
@@ -463,7 +475,9 @@ const EvidencePage = () => {
               <div className="p-6 flex flex-col items-center gap-4">
                 <div className="flex items-center gap-2">
                   <KeyRound className="w-5 h-5 text-slate-400" />
-                  <p className="text-sm font-medium text-slate-600">Enter PIN to view evidence</p>
+                  <p className="text-sm font-medium text-slate-600">
+                    {!vaultPin ? "Create a 4-digit Vault PIN" : "Enter PIN to view evidence"}
+                  </p>
                 </div>
                 <motion.div className="flex gap-3" animate={pinError ? { x: [-6, 6, -4, 4, 0] } : {}}>
                   {[0, 1, 2, 3].map(i => (
@@ -592,7 +606,7 @@ const EvidencePage = () => {
                 "Plays back immediately (local)",
                 "Auto-uploads to Cloudinary ☁️",
                 "Survives page refresh after upload",
-                "Vault locked with PIN 1234",
+                "Vault locked with your secure PIN",
                 "SOS recordings labelled & uploaded",
                 "Download any file anytime",
               ].map(f => (
@@ -604,14 +618,7 @@ const EvidencePage = () => {
             </div>
           </div>
 
-          {/* Vault hint */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 border border-slate-700">
-            <div className="flex items-center gap-2 mb-2">
-              <KeyRound className="w-4 h-4 text-rose-400" />
-              <h3 className="font-semibold text-sm text-white">Vault PIN</h3>
-            </div>
-            <p className="text-xs text-slate-400">Enter <strong className="text-white">1234</strong> on the keypad to reveal all captured evidence.</p>
-          </div>
+
         </motion.div>
       </div>
 
