@@ -135,6 +135,73 @@ const haversineDist = (a, b) => {
 };
 
 // ── Haversine helper (already defined above) ─ reuse ─────────────
+
+// ── Location Autocomplete Input ────────────────────────────────
+const LocationInput = ({ value, onChange, placeholder, icon: Icon, color }) => {
+  const [suggs, setSuggs] = useState([]);
+  const [show, setShow] = useState(false);
+  const timer = useRef(null);
+
+  const fetchSuggs = async (q) => {
+    if (!q || q.trim().length === 0) {
+      setSuggs([]);
+      return;
+    }
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=5&countrycodes=in`);
+      const data = await res.json();
+      setSuggs(data || []);
+      // If we have results, ensure they are visible
+      if (data && data.length > 0) {
+        setShow(true);
+      }
+    } catch { setSuggs([]); }
+  };
+
+  const handleChange = (e) => {
+    const v = e.target.value;
+    onChange(v);
+    
+    // Immediately show whatever we have if we're typing, helps UX
+    setShow(true);
+    
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => fetchSuggs(v), 500);
+  };
+
+  return (
+    <div className="relative">
+      <Icon className={`absolute left-3 top-[1.3rem] -translate-y-1/2 w-4 h-4 text-${color}-500`} />
+      <input 
+        value={value} 
+        onChange={handleChange}
+        onFocus={() => setShow(true)}
+        onBlur={() => setTimeout(() => setShow(false), 200)} // delay to allow click
+        placeholder={placeholder}
+        className={`w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-${color}-400 transition-shadow transition-colors`} 
+      />
+      {show && suggs.length > 0 && (
+        <div className="absolute z-[10000] top-full mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden max-h-60 overflow-y-auto">
+          {suggs.map((s, i) => (
+            <div 
+              key={i} 
+              className="px-4 py-2.5 hover:bg-slate-50 cursor-pointer text-xs border-b border-slate-50 last:border-0 text-slate-700 transition-colors"
+              onClick={() => {
+                onChange(s.display_name);
+                setShow(false);
+                setSuggs([]);
+              }}
+            >
+              <strong className="block text-slate-900 mb-0.5 truncate">{s.display_name.split(",")[0]}</strong>
+              <span className="text-slate-400 block truncate">{s.display_name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Main Component ─────────────────────────────────────────────
 const SafeJourney = () => {
   const { fireSOS } = useSafety();
@@ -143,18 +210,23 @@ const SafeJourney = () => {
   const [source, setSource] = useState("");
   const [destination, setDestination] = useState("");
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [livePos, setLivePos] = useState(null); // real-time GPS during journey
+  const [livePos, setLivePos] = useState(null);
   const [route, setRoute] = useState([]);
   const [safeRoute, setSafeRoute] = useState([]);
+  const [balancedRoute, setBalancedRoute] = useState([]);
   const [activeRoute, setActiveRoute] = useState("standard");
   const [sourcePos, setSourcePos] = useState(null);
   const [destPos, setDestPos] = useState(null);
   const [duration, setDuration] = useState(0);
   const [loading, setLoading] = useState(false);
   const [routeThreats, setRouteThreats] = useState([]);
+  const [safeRouteThreats, setSafeRouteThreats] = useState([]);
+  const [balancedRouteThreats, setBalancedRouteThreats] = useState([]);
   const [nearbyThreats, setNearbyThreats] = useState([]);
   const [expandedThreat, setExpandedThreat] = useState(null);
   const [analysisStep, setAnalysisStep] = useState(0);
+  const [routeMeta, setRouteMeta] = useState({ standard: {}, safe: {}, balanced: {} });
+  const [expandedRoute, setExpandedRoute] = useState(null);
   const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]);
 
   // ── Active monitoring refs ─────────────────────────────────────
@@ -263,7 +335,6 @@ const SafeJourney = () => {
   const getRoute = async (start, end, avoidCoords) => {
     try {
       const body = { coordinates: [[start[1], start[0]], [end[1], end[0]]] };
-      // If we have threat coordinates to avoid, pass them to ORS
       if (avoidCoords && avoidCoords.length > 0) {
         body.options = {
           avoid_polygons: {
@@ -284,9 +355,14 @@ const SafeJourney = () => {
         body: JSON.stringify(body)
       });
       const data = await res.json();
-      if (!res.ok || !data.routes?.length) return [start, end];
-      return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-    } catch { return [start, end]; }
+      if (!res.ok || !data.routes?.length) return { coords: [start, end], distance: 0, duration: 0 };
+      const r = data.routes[0];
+      return {
+        coords: r.geometry.coordinates.map(c => [c[1], c[0]]),
+        distance: (r.summary?.distance || 0) / 1000, // km
+        duration: Math.round((r.summary?.duration || 0) / 60), // minutes
+      };
+    } catch { return { coords: [start, end], distance: 0, duration: 0 }; }
   };
 
   // ── Dynamic Risk Intelligence ────────────────────────────────
@@ -343,8 +419,12 @@ const SafeJourney = () => {
     setLoading(true);
     setAnalysisStep(1);
     setRouteThreats([]);
+    setSafeRouteThreats([]);
+    setBalancedRouteThreats([]);
     setSafeRoute([]);
+    setBalancedRoute([]);
     setActiveRoute("standard");
+    setExpandedRoute(null);
 
     const src = await getCoordinates(source);
     const dest = await getCoordinates(destination);
@@ -361,20 +441,43 @@ const SafeJourney = () => {
     setMapCenter(src);
     setNearbyThreats(getLocalThreats(src));
 
-    const routeCoords = await getRoute(src, dest);
-    setRoute(routeCoords);
+    // 1) Fetch the standard (fastest) route
+    const standardResult = await getRoute(src, dest);
+    setRoute(standardResult.coords);
 
     // Simulate AI processing
     setTimeout(async () => {
-      const threats = analyzeRoute(routeCoords);
+      const threats = analyzeRoute(standardResult.coords);
       setRouteThreats(threats);
 
-      // If threats found, compute a safe alternative avoiding threat coordinates
+      let safeMeta = { distance: 0, duration: 0 };
+      let balancedMeta = { distance: 0, duration: 0 };
+
       if (threats.length > 0) {
-        const threatCoords = threats.map(t => t.pos);
-        const safeCoords = await getRoute(src, dest, threatCoords);
-        setSafeRoute(safeCoords);
+        // 2) Safe route: avoid ALL threat zones
+        const allThreatCoords = threats.map(t => t.pos);
+        const safeResult = await getRoute(src, dest, allThreatCoords);
+        setSafeRoute(safeResult.coords);
+        safeMeta = { distance: safeResult.distance, duration: safeResult.duration };
+        const sThreats = analyzeRoute(safeResult.coords);
+        setSafeRouteThreats(sThreats);
+
+        // 3) Balanced route: only avoid critical/high threats, allow medium
+        const criticalThreats = threats.filter(t => t.dynamicSeverity === "critical" || t.dynamicSeverity === "high");
+        if (criticalThreats.length > 0 && criticalThreats.length < threats.length) {
+          const balResult = await getRoute(src, dest, criticalThreats.map(t => t.pos));
+          setBalancedRoute(balResult.coords);
+          balancedMeta = { distance: balResult.distance, duration: balResult.duration };
+          const bThreats = analyzeRoute(balResult.coords);
+          setBalancedRouteThreats(bThreats);
+        }
       }
+
+      setRouteMeta({
+        standard: { distance: standardResult.distance, duration: standardResult.duration },
+        safe: safeMeta,
+        balanced: balancedMeta,
+      });
 
       setAnalysisStep(2);
       setJourneyState("active");
@@ -386,15 +489,19 @@ const SafeJourney = () => {
     setJourneyState("idle");
     setRoute([]);
     setSafeRoute([]);
+    setBalancedRoute([]);
     setActiveRoute("standard");
     setDuration(0);
     setRouteThreats([]);
+    setSafeRouteThreats([]);
+    setBalancedRouteThreats([]);
     setNearbyThreats([]);
     setAnalysisStep(0);
     setSourcePos(null);
     setDestPos(null);
     setLivePos(null);
     setMonitorAlert(null);
+    setExpandedRoute(null);
     sosFiredRef.current = false;
   };
 
@@ -466,18 +573,20 @@ const SafeJourney = () => {
           {/* Input Card */}
           <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-md space-y-4">
             <div className="grid md:grid-cols-2 gap-3">
-              <div className="relative">
-                <Locate className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-500" />
-                <input value={source} onChange={e => setSource(e.target.value)}
-                  placeholder="Source (e.g. Connaught Place, New Delhi)"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-emerald-400" />
-              </div>
-              <div className="relative">
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rose-500" />
-                <input value={destination} onChange={e => setDestination(e.target.value)}
-                  placeholder="Destination (e.g. Bandra, Mumbai)"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-3 text-sm outline-none focus:ring-2 focus:ring-rose-400" />
-              </div>
+              <LocationInput 
+                value={source} 
+                onChange={setSource}
+                placeholder="Source (e.g. Connaught Place, New Delhi)"
+                icon={Locate}
+                color="emerald"
+              />
+              <LocationInput 
+                value={destination} 
+                onChange={setDestination}
+                placeholder="Destination (e.g. Bandra, Mumbai)"
+                icon={MapPin}
+                color="rose"
+              />
             </div>
 
             {journeyState === "idle" ? (
@@ -523,22 +632,31 @@ const SafeJourney = () => {
                   </Marker>
                 ))}
 
-                {/* Route lines */}
-                {route.length > 1 && activeRoute === "standard" && (
+                {/* Route lines — show all routes, highlight active */}
+                {route.length > 1 && (
                   <Polyline positions={route}
-                    color={routeThreats.length > 0 ? "#ef4444" : "#10b981"}
-                    weight={5}
-                    dashArray={routeThreats.length > 0 ? "8, 6" : undefined}
+                    color={activeRoute === "standard" ? (routeThreats.length > 0 ? "#ef4444" : "#10b981") : "#94a3b8"}
+                    weight={activeRoute === "standard" ? 6 : 3}
+                    opacity={activeRoute === "standard" ? 1 : 0.4}
+                    dashArray={activeRoute !== "standard" ? "8, 6" : (routeThreats.length > 0 ? "8, 6" : undefined)}
                   />
                 )}
 
-                {/* Safe Alternative Route (green) */}
                 {safeRoute.length > 1 && (
                   <Polyline positions={safeRoute}
-                    color="#10b981"
+                    color={activeRoute === "safe" ? "#10b981" : "#6ee7b7"}
                     weight={activeRoute === "safe" ? 6 : 3}
-                    opacity={activeRoute === "safe" ? 1 : 0.6}
-                    dashArray={activeRoute === "safe" ? undefined : "10, 8"}
+                    opacity={activeRoute === "safe" ? 1 : 0.4}
+                    dashArray={activeRoute !== "safe" ? "10, 8" : undefined}
+                  />
+                )}
+
+                {balancedRoute.length > 1 && (
+                  <Polyline positions={balancedRoute}
+                    color={activeRoute === "balanced" ? "#f59e0b" : "#fcd34d"}
+                    weight={activeRoute === "balanced" ? 6 : 3}
+                    opacity={activeRoute === "balanced" ? 1 : 0.4}
+                    dashArray={activeRoute !== "balanced" ? "10, 8" : undefined}
                   />
                 )}
 
@@ -560,10 +678,11 @@ const SafeJourney = () => {
 
             {/* Legend + NCRB badge */}
             <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 flex-wrap gap-2">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-4 flex-wrap">
                 <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-rose-500 inline-block" /> Threat Zone</span>
-                <span className="flex items-center gap-1"><span className="w-6 h-1 bg-rose-500 inline-block rounded" /> Risk Route</span>
-                <span className="flex items-center gap-1"><span className="w-6 h-1 bg-emerald-500 inline-block rounded" /> Safe Route</span>
+                <span className="flex items-center gap-1"><span className="w-6 h-1 bg-rose-500 inline-block rounded" /> Fastest</span>
+                <span className="flex items-center gap-1"><span className="w-6 h-1 bg-emerald-500 inline-block rounded" /> Safest</span>
+                <span className="flex items-center gap-1"><span className="w-6 h-1 bg-amber-400 inline-block rounded" /> Balanced</span>
               </div>
               <span className="flex items-center gap-1 text-slate-400">
                 <Info className="w-3 h-3" /> Data: NCRB 2023 · {ALL_INDIA_THREATS.length} incidents across India
@@ -643,167 +762,353 @@ const SafeJourney = () => {
             </motion.div>
           )}
 
-          {/* Analysis results */}
+          {/* Analysis results — Multi-Route Comparison */}
           {analysisStep === 2 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
-              {/* Summary */}
-              <div className={`bg-${riskColor}-50 border border-${riskColor}-200 rounded-2xl p-4`}>
-                <div className="flex items-center gap-2 mb-1">
-                  <TrendingUp className={`w-4 h-4 text-${riskColor}-600`} />
-                  <span className={`font-bold text-sm text-${riskColor}-900`}>AI Route Analysis</span>
-                </div>
-                {routeThreats.length === 0
-                  ? <p className="text-xs text-emerald-700">✅ No threat zones detected along your route. Stay alert and travel safe!</p>
-                  : <p className="text-xs text-rose-800 font-medium">⚠️ Route passes near <strong>{routeThreats.length}</strong> recorded threat zone{routeThreats.length > 1 ? "s" : ""}. Review incidents below.</p>
-                }
+
+              {/* Route Options Title */}
+              <div className="flex items-center gap-2 mb-1">
+                <Navigation2 className="w-4 h-4 text-slate-600" />
+                <span className="font-bold text-sm text-slate-900">AI Found {1 + (safeRoute.length > 1 ? 1 : 0) + (balancedRoute.length > 1 ? 1 : 0)} Route{(safeRoute.length > 1 || balancedRoute.length > 1) ? "s" : ""}</span>
               </div>
 
-              {/* Safe Route Switch UI */}
-              {routeThreats.length > 0 && safeRoute.length > 1 && (
-                <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }}
-                  className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-                  <div className="flex items-start gap-2 mb-3">
-                    <Shield className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-bold text-emerald-900">Safe Route Available</p>
-                      <p className="text-xs text-emerald-700 mt-0.5">Our AI found an alternate path that avoids the threat zones on your standard route (shown in green dashes).</p>
-                    </div>
-                  </div>
-
-                  {activeRoute === "standard" ? (
-                    <button
-                      onClick={() => setActiveRoute("safe")}
-                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl py-2.5 text-sm font-bold flex items-center justify-center gap-2 transition-colors">
-                      <CheckCircle className="w-4 h-4" /> Switch to Safe Route
-                    </button>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 bg-emerald-500/10 rounded-xl px-3 py-2">
-                        <CheckCircle className="w-4 h-4 text-emerald-600" />
-                        <span className="text-xs font-bold text-emerald-800">Safe Route Active</span>
-                      </div>
-                      <button
-                        onClick={openGoogleMaps}
-                        className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all hover:-translate-y-0.5">
-                        <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" /></svg>
-                        Navigate via Google Maps
-                      </button>
-                      <button
-                        onClick={() => setActiveRoute("standard")}
-                        className="w-full bg-white border border-slate-200 text-slate-600 rounded-xl py-2 text-xs font-medium hover:bg-slate-50 transition-colors">
-                        Back to original route
-                      </button>
-                    </div>
-                  )}
-                </motion.div>
-              )}
-
-              {/* Navigate button even if route is safe */}
-              {routeThreats.length === 0 && sourcePos && destPos && (
-                <button
-                  onClick={openGoogleMaps}
-                  className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl py-3 text-sm font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all">
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" /></svg>
-                  Navigate via Google Maps
-                </button>
-              )}
-
-              {/* Why AI rejected original route */}
-              {routeThreats.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                  className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-700 shadow-lg"
-                >
-                  <div className="px-4 py-3 bg-slate-800 flex items-center gap-2 border-b border-slate-700">
-                    <Zap className="w-4 h-4 text-yellow-400" />
-                    <h4 className="text-sm font-bold text-white">Why AI Rejected Standard Route</h4>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    <p className="text-xs text-slate-400 leading-relaxed">
-                      Our AI cross-referenced your route against the NCRB 2023 crime database and detected <span className="text-rose-400 font-bold">{routeThreats.length} threat intersection{routeThreats.length > 1 ? "s" : ""}</span>. Here's the breakdown:
-                    </p>
-                    <div className="space-y-2">
-                      {routeThreats.map((t, i) => (
-                        <div key={t.id} className="flex gap-2.5 items-start">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 mt-0.5 ${t.dynamicSeverity === "critical" ? "bg-rose-500/20 text-rose-400" :
-                              t.dynamicSeverity === "high" ? "bg-orange-500/20 text-orange-400" :
-                                "bg-amber-500/20 text-amber-400"
-                            }`}>{i + 1}</span>
+              {/* ───── Route Card: FASTEST ───── */}
+              {(() => {
+                const isActive = activeRoute === "standard";
+                const threatCount = routeThreats.length;
+                const meta = routeMeta.standard;
+                const hasCritical = routeThreats.some(t => t.dynamicSeverity === "critical");
+                const hasHigh = routeThreats.some(t => t.dynamicSeverity === "high");
+                const expanded = expandedRoute === "standard";
+                return (
+                  <motion.div className={`rounded-2xl border-2 overflow-hidden transition-all shadow-md ${
+                    isActive ? "border-blue-500 bg-blue-50/30" : threatCount > 0 ? "border-red-200 bg-white" : "border-emerald-200 bg-white"
+                  }`}>
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${threatCount > 0 ? "bg-red-100" : "bg-blue-100"}`}>
+                            <Zap className={`w-4 h-4 ${threatCount > 0 ? "text-red-600" : "text-blue-600"}`} />
+                          </div>
                           <div>
-                            <p className="text-xs font-semibold text-slate-200">{t.type} · <span className="text-slate-400 font-normal">{t.area}</span></p>
-                            <p className="text-[11px] text-slate-400 leading-snug mt-0.5">{t.aiReason}</p>
+                            <h4 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                              Fastest Route
+                              {isActive && <span className="text-[9px] bg-blue-500 text-white px-2 py-0.5 rounded-full">ACTIVE</span>}
+                            </h4>
+                            <p className="text-[11px] text-slate-500">
+                              {meta.distance > 0 ? `${meta.distance.toFixed(1)} km` : "—"}
+                              {meta.duration > 0 ? ` · ~${meta.duration} min` : ""}
+                              {threatCount > 0 ? ` · ${threatCount} threat zone${threatCount > 1 ? "s" : ""}` : " · No threats"}
+                            </p>
                           </div>
                         </div>
-                      ))}
+                        <button onClick={() => setExpandedRoute(expanded ? null : "standard")}>
+                          {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                        </button>
+                      </div>
+
+                      {/* Quick Why / Why Not pills */}
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">⚡ Shortest distance</span>
+                        <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">⏱️ Quickest arrival</span>
+                        {threatCount > 0 && <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">⚠️ {threatCount} danger zone{threatCount > 1 ? "s" : ""}</span>}
+                        {hasCritical && <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-medium">🔴 Critical risk area</span>}
+                      </div>
+
+                      {!isActive && (
+                        <button onClick={() => setActiveRoute("standard")}
+                          className={`w-full py-2 rounded-xl text-xs font-bold transition-colors ${threatCount > 0 ? "bg-slate-200 text-slate-700 hover:bg-slate-300" : "bg-blue-500 text-white hover:bg-blue-600"}`}>
+                          Select This Route
+                        </button>
+                      )}
+                      {isActive && (
+                        <button onClick={openGoogleMaps}
+                          className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all">
+                          <Navigation2 className="w-3.5 h-3.5" /> Navigate via Google Maps
+                        </button>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-2.5">
-                      <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
-                      <p className="text-[11px] text-yellow-300 leading-snug">
-                        Combined risk score: <span className="font-bold">{riskScore}</span>. The safe alternative route is recommended to avoid all {routeThreats.length} flagged zone{routeThreats.length > 1 ? "s" : ""}.
-                      </p>
+
+                    {/* Expanded detail */}
+                    <AnimatePresence>
+                      {expanded && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                          className="border-t border-slate-200 p-4 space-y-3 bg-slate-50">
+                          <div className="space-y-2">
+                            <h5 className="text-xs font-bold text-emerald-700 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Why Choose</h5>
+                            <ul className="text-[11px] text-slate-600 space-y-1 pl-4 list-disc">
+                              <li>Shortest path at <strong>{meta.distance > 0 ? `${meta.distance.toFixed(1)} km` : "calculated distance"}</strong></li>
+                              <li>Fastest estimated arrival at <strong>~{meta.duration > 0 ? `${meta.duration} min` : "—"}</strong></li>
+                              <li>Uses main roads with higher traffic density</li>
+                              {threatCount === 0 && <li>No NCRB-recorded threats near this path</li>}
+                            </ul>
+                          </div>
+                          {threatCount > 0 && (
+                            <div className="space-y-2">
+                              <h5 className="text-xs font-bold text-red-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Why Avoid</h5>
+                              <ul className="text-[11px] text-slate-600 space-y-1 pl-4 list-disc">
+                                <li>Passes near <strong>{threatCount} recorded threat zone{threatCount > 1 ? "s" : ""}</strong> (NCRB 2023)</li>
+                                {hasCritical && <li>Includes <strong className="text-red-600">critical-severity</strong> areas with assault/molestation history</li>}
+                                {hasHigh && <li>Crosses <strong className="text-orange-600">high-risk</strong> zones with poor CCTV and lighting</li>}
+                                {routeThreats.map(t => <li key={t.id}><strong>{t.type}</strong> near {t.area} — {t.cases} cases ({t.lastIncident})</li>)}
+                              </ul>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })()}
+
+              {/* ───── Route Card: SAFEST ───── */}
+              {safeRoute.length > 1 && (() => {
+                const isActive = activeRoute === "safe";
+                const threatCount = safeRouteThreats.length;
+                const meta = routeMeta.safe;
+                const extraDist = meta.distance > 0 && routeMeta.standard.distance > 0 ? meta.distance - routeMeta.standard.distance : 0;
+                const extraTime = meta.duration > 0 && routeMeta.standard.duration > 0 ? meta.duration - routeMeta.standard.duration : 0;
+                const expanded = expandedRoute === "safe";
+                return (
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+                    className={`rounded-2xl border-2 overflow-hidden transition-all shadow-md ${
+                      isActive ? "border-emerald-500 bg-emerald-50/30" : "border-emerald-200 bg-white"
+                    }`}>
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                            <Shield className="w-4 h-4 text-emerald-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                              Safest Route
+                              <span className="text-[9px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-bold">AI RECOMMENDED</span>
+                              {isActive && <span className="text-[9px] bg-emerald-500 text-white px-2 py-0.5 rounded-full">ACTIVE</span>}
+                            </h4>
+                            <p className="text-[11px] text-slate-500">
+                              {meta.distance > 0 ? `${meta.distance.toFixed(1)} km` : "—"}
+                              {meta.duration > 0 ? ` · ~${meta.duration} min` : ""}
+                              {threatCount === 0 ? " · Zero threats" : ` · ${threatCount} zone${threatCount > 1 ? "s" : ""}`}
+                            </p>
+                          </div>
+                        </div>
+                        <button onClick={() => setExpandedRoute(expanded ? null : "safe")}>
+                          {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">🛡️ Avoids all threats</span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">📍 Well-lit main roads</span>
+                        {extraDist > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">📏 +{extraDist.toFixed(1)} km longer</span>}
+                        {extraTime > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">⏱️ +{extraTime} min extra</span>}
+                      </div>
+
+                      {!isActive ? (
+                        <button onClick={() => setActiveRoute("safe")}
+                          className="w-full bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5">
+                          <Shield className="w-3.5 h-3.5" /> Select Safest Route
+                        </button>
+                      ) : (
+                        <button onClick={openGoogleMaps}
+                          className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all">
+                          <Navigation2 className="w-3.5 h-3.5" /> Navigate via Google Maps
+                        </button>
+                      )}
                     </div>
-                  </div>
-                </motion.div>
+
+                    <AnimatePresence>
+                      {expanded && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                          className="border-t border-emerald-100 p-4 space-y-4 bg-emerald-50/50">
+
+                          {/* Why this route is safe */}
+                          <div className="space-y-2">
+                            <h5 className="text-xs font-bold text-emerald-700 flex items-center gap-1"><Shield className="w-3 h-3" /> Why This Route Is Safe</h5>
+                            <div className="bg-white border border-emerald-200 rounded-xl p-3 space-y-2">
+                              <ul className="text-[11px] text-slateald-600 space-y-1.5">
+                                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0 mt-0.5">✓</span> Completely re-routed to <strong>avoid all {routeThreats.length} NCRB-flagged danger zones</strong></li>
+                                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0 mt-0.5">✓</span> Uses roads with <strong>higher average street lighting scores</strong> and active CCTV networks</li>
+                                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0 mt-0.5">✓</span> Passes through <strong>commercial and residential neighbourhoods</strong> with round-the-clock public presence</li>
+                                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0 mt-0.5">✓</span> <strong>No isolated underpasses, dead-end lanes</strong>, or unlit stretches on this path</li>
+                                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0 mt-0.5">✓</span> AI-recommended for <strong>solo travel, night journeys</strong>, and high-risk time windows (7 PM–5 AM)</li>
+                              </ul>
+                            </div>
+                          </div>
+
+                          {/* What dangers are bypassed */}
+                          <div className="space-y-2">
+                            <h5 className="text-xs font-bold text-slate-700 flex items-center gap-1"><Eye className="w-3 h-3" /> Incidents This Route Bypasses</h5>
+                            <p className="text-[10px] text-slate-500">This safe path avoids the following recorded danger zones entirely:</p>
+                            <div className="space-y-2">
+                              {routeThreats.map(t => {
+                                const sevCol = t.dynamicSeverity === "critical" ? "rose" : t.dynamicSeverity === "high" ? "orange" : "amber";
+                                return (
+                                  <div key={t.id} className="bg-white border border-slate-200 rounded-xl p-3 space-y-1.5 relative overflow-hidden">
+                                    <div className={`absolute left-0 top-0 bottom-0 w-1 bg-${sevCol}-400 rounded-l-xl`} />
+                                    <div className="pl-2">
+                                      <div className="flex items-start justify-between gap-1 mb-1">
+                                        <div>
+                                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-${sevCol}-100 text-${sevCol}-700 mr-1`}>{severityLabel[t.dynamicSeverity]}</span>
+                                          <span className="text-[9px] text-slate-400">{t.city}</span>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-emerald-600 shrink-0 flex items-center gap-0.5"><CheckCircle className="w-3 h-3" /> Bypassed</span>
+                                      </div>
+                                      <p className="text-[11px] font-semibold text-slate-800">{t.type}</p>
+                                      <p className="text-[10px] text-slate-500">📍 {t.area} · <strong className="text-rose-600">{t.cases} cases</strong> · Last: {t.lastIncident}</p>
+                                      <p className="text-[10px] text-slate-500 mt-1 leading-snug">{t.desc}</p>
+                                      <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1.5 mt-1.5">
+                                        <p className="text-[10px] text-emerald-700 leading-snug"><strong>Why safe route avoids this:</strong> {t.aiReason}</p>
+                                      </div>
+                                      <div className="flex gap-3 text-[10px] text-slate-400 mt-1">
+                                        <span><Clock className="w-3 h-3 inline mr-0.5" />Peak: {t.time}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Trade-offs */}
+                          <div className="space-y-2">
+                            <h5 className="text-xs font-bold text-amber-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Trade-offs</h5>
+                            <ul className="text-[11px] text-slate-600 space-y-1 pl-4 list-disc">
+                              {extraDist > 0 && <li><strong>+{extraDist.toFixed(1)} km</strong> longer than the fastest route</li>}
+                              {extraTime > 0 && <li>Takes approximately <strong>+{extraTime} minutes</strong> more than the fastest</li>}
+                              <li>May use slightly less direct roads through safer neighbourhoods</li>
+                            </ul>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })()}
+
+              {/* ───── Route Card: BALANCED ───── */}
+              {balancedRoute.length > 1 && (() => {
+                const isActive = activeRoute === "balanced";
+                const threatCount = balancedRouteThreats.length;
+                const meta = routeMeta.balanced;
+                const expanded = expandedRoute === "balanced";
+                const avoidedCritical = routeThreats.filter(t => t.dynamicSeverity === "critical" || t.dynamicSeverity === "high").length;
+                return (
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+                    className={`rounded-2xl border-2 overflow-hidden transition-all shadow-md ${
+                      isActive ? "border-amber-500 bg-amber-50/30" : "border-amber-200 bg-white"
+                    }`}>
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                            <TrendingUp className="w-4 h-4 text-amber-600" />
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-sm text-slate-900 flex items-center gap-1.5">
+                              Balanced Route
+                              {isActive && <span className="text-[9px] bg-amber-500 text-white px-2 py-0.5 rounded-full">ACTIVE</span>}
+                            </h4>
+                            <p className="text-[11px] text-slate-500">
+                              {meta.distance > 0 ? `${meta.distance.toFixed(1)} km` : "—"}
+                              {meta.duration > 0 ? ` · ~${meta.duration} min` : ""}
+                              {threatCount > 0 ? ` · ${threatCount} low-risk zone${threatCount > 1 ? "s" : ""}` : " · No threats"}
+                            </p>
+                          </div>
+                        </div>
+                        <button onClick={() => setExpandedRoute(expanded ? null : "balanced")}>
+                          {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                        </button>
+                      </div>
+
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">⚖️ Speed + Safety mix</span>
+                        <span className="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full font-medium">🛡️ Avoids {avoidedCritical} critical zones</span>
+                        {threatCount > 0 && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">⚠️ {threatCount} moderate zone{threatCount > 1 ? "s" : ""} remain</span>}
+                      </div>
+
+                      {!isActive ? (
+                        <button onClick={() => setActiveRoute("balanced")}
+                          className="w-full bg-amber-500 hover:bg-amber-600 text-white py-2 rounded-xl text-xs font-bold transition-colors">
+                          Select Balanced Route
+                        </button>
+                      ) : (
+                        <button onClick={openGoogleMaps}
+                          className="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition-all">
+                          <Navigation2 className="w-3.5 h-3.5" /> Navigate via Google Maps
+                        </button>
+                      )}
+                    </div>
+
+                    <AnimatePresence>
+                      {expanded && (
+                        <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                          className="border-t border-amber-100 p-4 space-y-4 bg-amber-50/50">
+
+                          {/* Why balanced is better */}
+                          <div className="space-y-2">
+                            <h5 className="text-xs font-bold text-emerald-700 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Why This Is Better Than Fastest</h5>
+                            <div className="bg-white border border-amber-200 rounded-xl p-3">
+                              <ul className="text-[11px] text-slate-600 space-y-1.5">
+                                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0 mt-0.5">✓</span> Avoids all <strong>{avoidedCritical} critical/high-risk</strong> danger zones with assault and molestation history</li>
+                                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0 mt-0.5">✓</span> Shorter and faster than the Safest Route — a good middle ground</li>
+                                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0 mt-0.5">✓</span> Daytime moderate-risk areas typically have <strong>active police patrols</strong> and public footfall</li>
+                                <li className="flex items-start gap-1.5"><span className="text-emerald-500 shrink-0 mt-0.5">✓</span> Best choice if travelling in a group or using a <strong>tracked, verified ride-share</strong></li>
+                              </ul>
+                            </div>
+                          </div>
+
+                          {/* Remaining incidents on balanced route */}
+                          {threatCount > 0 && (
+                            <div className="space-y-2">
+                              <h5 className="text-xs font-bold text-amber-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Remaining Incidents Near This Route</h5>
+                              <p className="text-[10px] text-slate-500">Moderate-risk zones still present — be alert in these areas:</p>
+                              <div className="space-y-2">
+                                {balancedRouteThreats.map(t => (
+                                  <div key={t.id} className="bg-white border border-amber-200 rounded-xl p-3 space-y-1.5 relative overflow-hidden">
+                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-amber-400 rounded-l-xl" />
+                                    <div className="pl-2">
+                                      <div className="flex justify-between items-start gap-1 mb-1">
+                                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">{severityLabel[t.dynamicSeverity]}</span>
+                                        <span className="text-[10px] font-bold text-rose-600">{t.cases} cases</span>
+                                      </div>
+                                      <p className="text-[11px] font-semibold text-slate-800">{t.type}</p>
+                                      <p className="text-[10px] text-slate-500">📍 {t.area} · Last: {t.lastIncident}</p>
+                                      <p className="text-[10px] text-slate-600 leading-snug mt-1">{t.aiReason}</p>
+                                      <span className="text-[10px] text-slate-400"><Clock className="w-3 h-3 inline mr-0.5" />Peak: {t.time}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* When not to take this route */}
+                          <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+                            <p className="text-[10px] font-bold text-red-700 mb-1">⚠️ When to avoid this route:</p>
+                            <ul className="text-[10px] text-red-600 space-y-0.5 pl-3 list-disc">
+                              <li>Solo travel after 7 PM — choose Safest Route instead</li>
+                              <li>When moderate zones are in their peak risk hours</li>
+                              {threatCount > 0 && <li>Near: {balancedRouteThreats.map(t => t.area).join(", ")}</li>}
+                            </ul>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.div>
+                );
+              })()}
+
+              {/* No threats at all */}
+              {routeThreats.length === 0 && (
+                <div className="bg-white rounded-2xl p-5 border border-emerald-200 shadow text-center">
+                  <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-700">All Routes Appear Safe</p>
+                  <p className="text-xs text-slate-500 mt-1">No NCRB-recorded threats near any computed path. Travel safe!</p>
+                </div>
               )}
 
-              {/* Threat cards */}
-              {routeThreats.length === 0
-                ? <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow text-center">
-                  <CheckCircle className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-slate-700">Route Appears Safe</p>
-                  <p className="text-xs text-slate-500 mt-1">No NCRB-recorded threats near this path.</p>
-                </div>
-                : <div className="space-y-3 max-h-[380px] overflow-y-auto pr-0.5">
-                  {routeThreats.map(threat => {
-                    const col = severityColor[threat.dynamicSeverity] || "slate";
-                    const label = severityLabel[threat.dynamicSeverity] || "Unknown";
-                    const expanded = expandedThreat === threat.id;
-                    return (
-                      <motion.div key={threat.id} initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}
-                        className={`bg-white rounded-2xl border border-${col}-200 shadow overflow-hidden`}>
-                        <div className="p-4 cursor-pointer" onClick={() => setExpandedThreat(expanded ? null : threat.id)}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full bg-${col}-100 text-${col}-700`}>{severityLabel[threat.severity]}</span>
-                                <span className="text-[9px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{threat.city}</span>
-                              </div>
-                              <h4 className="font-bold text-slate-900 text-sm">{threat.type}</h4>
-                              <p className="text-xs text-slate-500 truncate">{threat.area}</p>
-                            </div>
-                            <div className="flex flex-col items-end shrink-0">
-                              <span className={`text-xl font-black text-${col}-600 leading-none`}>{threat.cases}</span>
-                              <span className="text-[9px] text-slate-400">cases</span>
-                              {expanded ? <ChevronUp className="w-3.5 h-3.5 text-slate-400 mt-1" /> : <ChevronDown className="w-3.5 h-3.5 text-slate-400 mt-1" />}
-                            </div>
-                          </div>
-                        </div>
-
-                        <AnimatePresence>
-                          {expanded && (
-                            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }}
-                              exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }}
-                              className={`border-t border-${col}-100 bg-${col}-50 px-4 py-3 space-y-2`}>
-                              <p className="text-xs text-slate-700">{threat.desc}</p>
-                              <div className={`flex items-start gap-2 bg-white/70 border border-${col}-200 rounded-lg p-2`}>
-                                <Zap className={`w-3.5 h-3.5 text-${col}-600 shrink-0 mt-0.5`} />
-                                <div>
-                                  <p className={`text-[10px] font-bold text-${col}-800 mb-0.5`}>🤖 AI Analysis</p>
-                                  <p className={`text-[11px] text-${col}-700 leading-snug`}>{threat.aiReason}</p>
-                                </div>
-                              </div>
-                              <div className="flex gap-3 text-[10px] text-slate-500">
-                                <span className="flex items-center gap-1"><Eye className="w-3 h-3" /> Peak: {threat.time}</span>
-                                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Last: {threat.lastIncident}</span>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              }
             </motion.div>
           )}
 
