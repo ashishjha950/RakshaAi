@@ -27,7 +27,7 @@ export type DrawerParamList = {
   SafeJourney: undefined;
   Community: undefined;
   Evidence: undefined;
-  SOSTriggers: undefined;
+  MyData: undefined;
 };
 
 const Drawer = createDrawerNavigator<DrawerParamList>();
@@ -100,7 +100,7 @@ export const DrawerNavigator: React.FC = () => (
   >
     <Drawer.Screen
       name="Dashboard"
-      component={HomeScreen}
+      component={SahayakScreen}
       options={{ drawerIcon: ({ color }) => <MaterialCommunityIcons name="view-dashboard-outline" size={22} color={color} /> }}
     />
     <Drawer.Screen
@@ -117,11 +117,11 @@ export const DrawerNavigator: React.FC = () => (
       options={{ drawerIcon: ({ color }) => <MaterialCommunityIcons name="account-group-outline" size={22} color={color} /> }}
     />
     <Drawer.Screen
-      name="SOSTriggers"
-      component={SahayakScreen}
+      name="MyData"
+      component={HomeScreen}
       options={{
-        title: 'SOS Triggers',
-        drawerIcon: ({ color }) => <MaterialCommunityIcons name="gesture-tap" size={22} color={color} />,
+        title: 'My Data',
+        drawerIcon: ({ color }) => <MaterialCommunityIcons name="chart-box-outline" size={22} color={color} />,
       }}
     />
     <Drawer.Screen
