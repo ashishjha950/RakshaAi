@@ -7,9 +7,37 @@ import { useSafety } from "../context/SafetyContext";
 // GlobalSOSBanner — floats at the top whenever SOS is triggered
 // ─────────────────────────────────────────────────────────────────────
 export const GlobalSOSBanner = () => {
-  const { sosTriggered, detectedKeyword } = useSafety();
+  const { sosTriggered, detectedKeyword, sosPending, cancelSOS } = useSafety();
 
   return (
+    <>
+    <AnimatePresence>
+      {sosPending && (
+        <motion.div
+          key="sos-pending-banner"
+          initial={{ y: -100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -100, opacity: 0 }}
+          className="fixed top-0 left-0 right-0 z-[9999] flex items-center justify-between gap-3
+                     bg-gradient-to-r from-orange-500 to-amber-600 text-white px-5 py-4 shadow-xl"
+        >
+          <div className="flex items-center gap-3">
+            <span className="w-8 h-8 flex items-center justify-center font-bold bg-white/20 rounded-full animate-pulse">
+              {sosPending.timeLeft}
+            </span>
+            <div>
+              <span className="font-bold text-base block">SOS COUNTDOWN</span>
+              <span className="text-xs text-white/80">Trigger: {sosPending.keyword.toUpperCase()}</span>
+            </div>
+          </div>
+          
+          <button onClick={cancelSOS} className="bg-white text-orange-600 font-bold px-4 py-2 rounded-xl text-sm shadow hover:bg-orange-50 transition-colors">
+            CANCEL SOS
+          </button>
+        </motion.div>
+      )}
+    </AnimatePresence>
+
     <AnimatePresence>
       {sosTriggered && (
         <motion.div
@@ -36,6 +64,7 @@ export const GlobalSOSBanner = () => {
         </motion.div>
       )}
     </AnimatePresence>
+    </>
   );
 };
 

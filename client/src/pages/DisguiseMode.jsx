@@ -30,7 +30,7 @@ const saveSOSToVault = (blob, keyword) => {
     // Push to evidence page's in-memory flag so it can pick it up on next visit
     const evEntry = {
       id: Date.now().toString(),
-      type: "audio",
+      type: "video",
       name: `🚨 Disguise-SOS — "${keyword}" — ${nowLabel()}`,
       date: nowLabel(),
       size: `${(blob.size / 1024).toFixed(1)} KB`,
@@ -39,7 +39,7 @@ const saveSOSToVault = (blob, keyword) => {
       sosBlob: true,
       // Store a data URL only if blob is small enough (<1MB)
       url: blob.size < 1024 * 1024 ? url : "",
-      mimeType: "audio/webm",
+      mimeType: "video/webm",
     };
     const all = JSON.parse(localStorage.getItem("raksha_evidence_meta") || "[]");
     all.unshift(evEntry);
@@ -222,20 +222,20 @@ const DisguiseMode = () => {
     saveSOSToVault(blob, keyword);
   }, []);
 
-  // Start silent audio recording
+  // Start silent video and audio recording
   const startSosRecording = useCallback(async (keyword) => {
     if (sosRecActive.current) return;
     sosRecActive.current = true;
     sosChunks.current = [];
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const rec = new MediaRecorder(stream, { mimeType: "audio/webm" });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      const rec = new MediaRecorder(stream, { mimeType: "video/webm" });
       sosRecRef.current = rec;
       rec.ondataavailable = e => { if (e.data.size > 0) sosChunks.current.push(e.data); };
       rec.onstop = () => {
         stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(sosChunks.current, { type: "audio/webm" });
+        const blob = new Blob(sosChunks.current, { type: "video/webm" });
         handleSosRecordingDone(blob, keyword);
       };
       rec.start(500);
@@ -252,7 +252,7 @@ const DisguiseMode = () => {
       let coords = null;
       try {
         const p = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 4000 }));
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }));
         coords = { lat: p.coords.latitude, lng: p.coords.longitude };
       } catch { /**/ }
 
@@ -263,12 +263,7 @@ const DisguiseMode = () => {
         body: JSON.stringify({ userId: user?._id || "", coordinates: coords }),
       });
 
-      if (res.ok) {
-        // Stop recording 3s after email confirmed
-        setTimeout(() => {
-          if (sosRecRef.current?.state === "recording") sosRecRef.current.stop();
-        }, 3000);
-      } else {
+      if (!res.ok) {
         emailSentRef.current = false; // allow retry
       }
     } catch {
@@ -339,6 +334,7 @@ const DisguiseMode = () => {
   // Unlock → navigate to Evidence page
   const handleUnlock = useCallback(() => {
     recognitionRef.current?.stop();
+    if (sosRecRef.current?.state === "recording") sosRecRef.current.stop();
     setDisguiseActive(false);
     navigate("/evidence");
   }, [navigate]);

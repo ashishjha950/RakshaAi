@@ -1,0 +1,24 @@
+﻿App.tsx(42,35): error TS2322: Type 'Promise<{ shouldShowAlert: true; shouldPlaySound: true; shouldSetBadge: true; }>' is not assignable to type 'Promise<NotificationBehavior>'.
+  Type '{ shouldShowAlert: true; shouldPlaySound: true; shouldSetBadge: true; }' is missing the following properties from type 'NotificationBehavior': shouldShowBanner, shouldShowList
+App.tsx(81,13): error TS2741: Property 'fonts' is missing in type '{ dark: true; colors: { primary: "#DC143C"; background: "#0A0A0F"; card: "#12121A"; text: "#F1F1F8"; border: "#2A2A3E"; notification: "#DC143C"; }; }' but required in type 'Theme'.
+src/navigation/DrawerNavigator.tsx(42,30): error TS2304: Cannot find name 'styles'.
+src/navigation/DrawerNavigator.tsx(45,20): error TS2304: Cannot find name 'styles'.
+src/navigation/DrawerNavigator.tsx(47,22): error TS2304: Cannot find name 'styles'.
+src/navigation/DrawerNavigator.tsx(48,22): error TS2304: Cannot find name 'styles'.
+src/navigation/DrawerNavigator.tsx(55,20): error TS2304: Cannot find name 'styles'.
+src/navigation/DrawerNavigator.tsx(56,22): error TS2304: Cannot find name 'styles'.
+src/navigation/DrawerNavigator.tsx(60,21): error TS2304: Cannot find name 'styles'.
+src/navigation/DrawerNavigator.tsx(65,27): error TS2304: Cannot find name 'styles'.
+src/screens/EvidenceScreen.tsx(66,38): error TS2339: Property 'multiGet' does not exist on type 'AsyncStorage'.
+src/screens/EvidenceScreen.tsx(68,16): error TS7031: Binding element 'val' implicitly has an 'any' type.
+src/screens/EvidenceScreen.tsx(163,40): error TS2339: Property 'documentDirectory' does not exist on type 'typeof import("C:/Users/ishan/OneDrive/Desktop/RakshaAi/RakshaAi/rakshaai-mobile/node_modules/expo-file-system/build/index")'.
+src/screens/EvidenceScreen.tsx(187,40): error TS2339: Property 'documentDirectory' does not exist on type 'typeof import("C:/Users/ishan/OneDrive/Desktop/RakshaAi/RakshaAi/rakshaai-mobile/node_modules/expo-file-system/build/index")'.
+src/services/backgroundGeoService.ts(40,39): error TS2345: Argument of type '({ data, error }: TaskManager.TaskManagerTaskBody) => void' is not assignable to parameter of type 'TaskManagerTaskExecutor<unknown>'.
+  Type 'void' is not assignable to type 'Promise<any>'.
+src/services/screamDetectionService.ts(37,7): error TS2345: Argument of type '(status: AVPlaybackStatus) => void' is not assignable to parameter of type '(status: RecordingStatus) => void'.
+  Types of parameters 'status' and 'status' are incompatible.
+    Type 'RecordingStatus' is not assignable to type 'AVPlaybackStatus'.
+      Type 'RecordingStatus' is missing the following properties from type 'AVPlaybackStatusSuccess': isLoaded, progressUpdateIntervalMillis, positionMillis, shouldPlay, and 9 more.
+src/services/voiceWatchService.ts(107,3): error TS2322: Type 'undefined' is not assignable to type '(e: SpeechResultsEvent) => void'.
+src/services/voiceWatchService.ts(108,3): error TS2322: Type 'undefined' is not assignable to type '(e: SpeechEndEvent) => void'.
+src/services/voiceWatchService.ts(109,3): error TS2322: Type 'undefined' is not assignable to type '(e: SpeechErrorEvent) => void'.

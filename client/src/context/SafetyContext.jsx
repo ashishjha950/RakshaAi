@@ -3,7 +3,7 @@ import { createContext, useContext, useState, useRef, useEffect, useCallback } f
 // ─── SOS keywords, same set used across the whole app ────────────────
 export const SOS_KEYWORDS = [
   "sos", "help", "danger", "bachao", "save me", "attack",
-  "emergency", "rape", "harassment", "chodo", "maroge",
+  "emergency", "rape", "harassment", "chodo", "maroge","mat karo","help me"
 ];
 
 const API = "http://localhost:3000/api";
@@ -41,6 +41,7 @@ export const SafetyProvider = ({ children }) => {
     () => localStorage.getItem("raksha_sos_watch") === "true"
   );
   const [sosTriggered, setSosTriggered] = useState(null); // { keyword, time }
+  const [sosPending, setSosPending] = useState(null); // { keyword, timeLeft }
   const [detectedKeyword, setDetectedKeyword] = useState("");
 
   const recRef = useRef(null);
@@ -48,6 +49,7 @@ export const SafetyProvider = ({ children }) => {
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
   const volumePollRef = useRef(null);
+  const sosTimerRef = useRef(null);
   const globalSosWatchRef = useRef(globalSosWatch);
   globalSosWatchRef.current = globalSosWatch;
 
@@ -57,10 +59,14 @@ export const SafetyProvider = ({ children }) => {
   };
 
   // ── Send SOS email via backend ─────────────────────────────────────
-  const fireSOS = useCallback(async (keyword) => {
-    if (emailSentRef.current) return;
-    emailSentRef.current = true;
+  const cancelSOS = useCallback(() => {
+    if (sosTimerRef.current) clearInterval(sosTimerRef.current);
+    sosTimerRef.current = null;
+    setSosPending(null);
+    emailSentRef.current = false;
+  }, []);
 
+  const executeSOS = useCallback(async (keyword) => {
     const now = new Date().toLocaleString("en-IN", {
       hour12: true, hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short"
     });
@@ -71,7 +77,7 @@ export const SafetyProvider = ({ children }) => {
       let coords = null;
       try {
         const pos = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 4000 }));
+          navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }));
         coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
       } catch { /**/ }
 
@@ -98,6 +104,27 @@ export const SafetyProvider = ({ children }) => {
       emailSentRef.current = false;
     }, 12000);
   }, []);
+
+  const fireSOS = useCallback((keyword) => {
+    if (emailSentRef.current) return;
+    emailSentRef.current = true; // prevent multiple triggers concurrently
+
+    let timeLeft = 3;
+    setSosPending({ keyword, timeLeft });
+    
+    if (sosTimerRef.current) clearInterval(sosTimerRef.current);
+    sosTimerRef.current = setInterval(() => {
+      timeLeft -= 1;
+      if (timeLeft > 0) {
+        setSosPending({ keyword, timeLeft });
+      } else {
+        clearInterval(sosTimerRef.current);
+        sosTimerRef.current = null;
+        setSosPending(null);
+        executeSOS(keyword);
+      }
+    }, 1000);
+  }, [executeSOS]);
 
   // ── Voice keyword detection ────────────────────────────────────────
   useEffect(() => {
@@ -210,7 +237,7 @@ export const SafetyProvider = ({ children }) => {
     <SafetyContext.Provider value={{
       safetyMode, setSafetyMode,
       globalSosWatch, setGlobalSosWatch,
-      sosTriggered, detectedKeyword,
+      sosTriggered, detectedKeyword, sosPending, cancelSOS,
       fakeCallActive, fakeCallContact, startFakeCall, endFakeCall,
       fireSOS,
       vaultPin, setVaultPin,

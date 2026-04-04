@@ -18,7 +18,6 @@ const sahayakItems = [
   { to: "/evidence", icon: Camera, label: "Evidence Capture" },
   { to: "/disguise", icon: EyeOff, label: "Disguise Mode" },
   { to: "/sahayak", icon: Bot, label: "Sahayak" },
-  { to: "/gupt", icon: ScanFace, label: "Gupt" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
 
@@ -27,7 +26,6 @@ const guardianItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/sos", icon: AlertTriangle, label: "SOS Triggers" },
   { to: "/evidence", icon: Camera, label: "Evidence" },
-  { to: "/gupt", icon: Eye, label: "Gupt (Stealth)" },
   { to: "/safe-journey", icon: Navigation, label: "Safe Journey" },
   { to: "/settings", icon: Settings, label: "Settings" },
 ];
