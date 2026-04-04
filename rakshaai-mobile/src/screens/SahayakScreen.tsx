@@ -1,14 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Switch, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Switch, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors } from '@/theme/colors';
 import { Header } from '@/components/Header';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafety } from '@/context/SafetyContext';
+import { useNavigation } from '@react-navigation/native';
+import { DrawerNavigationProp } from '@react-navigation/drawer';
+import { DrawerParamList } from '@/navigation/DrawerNavigator';
+
+type NavProp = DrawerNavigationProp<DrawerParamList>;
 
 const SahayakScreen: React.FC = () => {
+  const navigation = useNavigation<NavProp>();
+  const { fireSOS, globalSosWatch, setGlobalSosWatch, currentLocation, setSafetyMode } = useSafety();
+
   const [shakeEnabled, setShakeEnabled] = useState(true);
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [screamEnabled, setScreamEnabled] = useState(true);
 
   return (
@@ -17,13 +25,28 @@ const SahayakScreen: React.FC = () => {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {/* Title Section */}
-        <Text style={styles.title}>SOS Triggers</Text>
+        <Text style={styles.title}>Sahayak Dashboard</Text>
         <Text style={styles.subtitle}>
-          Choose how to activate emergency alerts.
+          Your quick access emergency triggers and status.
         </Text>
 
+        {/* System Status Panel */}
+        <View style={styles.statusPanel}>
+          <Text style={styles.statusTitle}>System Status</Text>
+          <View style={styles.statusRow}>
+            <MaterialCommunityIcons name="shield-check-outline" size={20} color={globalSosWatch ? Colors.success : Colors.textMuted} />
+            <Text style={styles.statusText}>Monitoring: {globalSosWatch ? 'ACTIVE' : 'INACTIVE'}</Text>
+          </View>
+          <View style={styles.statusRow}>
+            <MaterialCommunityIcons name="map-marker-outline" size={20} color={currentLocation ? Colors.info : Colors.textMuted} />
+            <Text style={styles.statusText}>
+              Location: {currentLocation ? new Date(currentLocation.timestamp || Date.now()).toLocaleTimeString() : 'Unknown'}
+            </Text>
+          </View>
+        </View>
+
         {/* Big Central Power Button */}
-        <View style={styles.powerBtnContainer}>
+        <TouchableOpacity style={styles.powerBtnContainer} onPress={() => { Alert.alert('SOS Initialized', 'Sending alert to your inner circle...'); fireSOS('manual_button'); }}>
           <LinearGradient
             colors={[Colors.emergency, Colors.emergencyLight]}
             style={styles.powerOuter}
@@ -32,9 +55,9 @@ const SahayakScreen: React.FC = () => {
               <MaterialCommunityIcons name="power" size={48} color={Colors.emergency} />
             </View>
           </LinearGradient>
-          <Text style={styles.powerTitle}>Power Button</Text>
-          <Text style={styles.powerSub}>Press 5 times</Text>
-        </View>
+          <Text style={styles.powerTitle}>Tap for SOS</Text>
+          <Text style={styles.powerSub}>Immediately alert contacts</Text>
+        </TouchableOpacity>
 
         {/* Active Triggers */}
         <Text style={styles.sectionTitle}>Active Triggers</Text>
@@ -60,39 +83,35 @@ const SahayakScreen: React.FC = () => {
             <MaterialCommunityIcons name="microphone-outline" size={24} color={Colors.warning} />
           </View>
           <View style={styles.triggerBody}>
-            <Text style={styles.triggerTitle}>Voice Command</Text>
-            <Text style={styles.triggerDesc}>Say "Help me"</Text>
+            <Text style={styles.triggerTitle}>Global Monitoring (Voice & Scream)</Text>
+            <Text style={styles.triggerDesc}>Enable background audio watch</Text>
           </View>
           <Switch
-            value={voiceEnabled}
-            onValueChange={setVoiceEnabled}
+            value={globalSosWatch}
+            onValueChange={(val) => setGlobalSosWatch(val)}
             trackColor={{ false: Colors.border, true: Colors.success }}
             thumbColor="#FFF"
           />
         </View>
 
-        <View style={styles.triggerCard}>
-          <View style={[styles.iconBox, { backgroundColor: Colors.emergency + '1A' }]}>
-            <MaterialCommunityIcons name="waveform" size={24} color={Colors.emergency} />
-          </View>
-          <View style={styles.triggerBody}>
-            <Text style={styles.triggerTitle}>Scream Detection</Text>
-            <Text style={styles.triggerDesc}>Detects distress sounds</Text>
-          </View>
-          <Switch
-            value={screamEnabled}
-            onValueChange={setScreamEnabled}
-            trackColor={{ false: Colors.border, true: Colors.success }}
-            thumbColor="#FFF"
-          />
-        </View>
 
-        {/* Configure */}
-        <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Configure</Text>
-        <TouchableOpacity style={styles.configureCard}>
-          <MaterialCommunityIcons name="account-heart-outline" size={24} color={Colors.textSecondary} />
+
+        {/* Quick Shortcuts */}
+        <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Quick Shortcuts</Text>
+        <TouchableOpacity style={styles.configureCard} onPress={() => navigation.navigate('SafeJourney')}>
+          <MaterialCommunityIcons name="navigation-outline" size={24} color={Colors.textSecondary} />
           <View style={styles.configBody}>
-            <Text style={styles.configTitle}>Set primary emergency contact</Text>
+            <Text style={styles.configTitle}>Start Safe Journey</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.border} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.configureCard, { marginTop: 12 }]} 
+          onPress={() => { setSafetyMode('guardian'); Alert.alert('Guardian Mode', 'App entering calculator disguise...'); }}>
+          <MaterialCommunityIcons name="calculator" size={24} color={Colors.textSecondary} />
+          <View style={styles.configBody}>
+            <Text style={styles.configTitle}>Open Disguise Mode</Text>
           </View>
           <MaterialCommunityIcons name="chevron-right" size={24} color={Colors.border} />
         </TouchableOpacity>
@@ -117,7 +136,12 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 100 },
   
   title: { fontFamily: 'Rajdhani_700Bold', fontSize: 32, color: Colors.textPrimary, marginBottom: 8 },
-  subtitle: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.textSecondary, marginBottom: 32 },
+  subtitle: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.textSecondary, marginBottom: 24 },
+
+  statusPanel: { backgroundColor: Colors.surface, padding: 16, borderRadius: 16, marginBottom: 32, borderWidth: 1, borderColor: Colors.border },
+  statusTitle: { fontFamily: 'Nunito_600SemiBold', fontSize: 13, color: Colors.textSecondary, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 4 },
+  statusText: { fontFamily: 'Nunito_400Regular', fontSize: 14, color: Colors.textPrimary },
 
   powerBtnContainer: { alignItems: 'center', marginBottom: 40 },
   powerOuter: {

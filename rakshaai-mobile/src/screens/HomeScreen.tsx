@@ -7,11 +7,13 @@ import { DrawerNavigationProp } from '@react-navigation/drawer';
 import { Colors } from '@/theme/colors';
 import { Header } from '@/components/Header';
 import { DrawerParamList } from '@/navigation/DrawerNavigator';
+import { useSafety } from '@/context/SafetyContext';
 
 type NavProp = DrawerNavigationProp<DrawerParamList>;
 
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation<NavProp>();
+  const { isJourneyActive, sosTriggered, globalSosWatch, currentLocation } = useSafety();
 
   return (
     <SafeAreaView style={styles.root}>
@@ -34,45 +36,46 @@ const HomeScreen: React.FC = () => {
           {/* Card 1 */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <MaterialCommunityIcons name="navigation-variant-outline" size={24} color={Colors.success} />
-              <MaterialCommunityIcons name="pulse" size={20} color={Colors.border} />
+              <MaterialCommunityIcons name="navigation-variant-outline" size={24} color={isJourneyActive ? Colors.success : Colors.textMuted} />
+              {isJourneyActive && <MaterialCommunityIcons name="pulse" size={20} color={Colors.border} />}
             </View>
-            <Text style={styles.cardValue}>0</Text>
+            <Text style={styles.cardValue}>{isJourneyActive ? '1' : '0'}</Text>
             <Text style={styles.cardLabel}>Active Journeys</Text>
-            <Text style={styles.cardSub}>Start one</Text>
+            <Text style={styles.cardSub}>{isJourneyActive ? 'Tracking route...' : 'Start one'}</Text>
           </View>
 
           {/* Card 2 */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <MaterialCommunityIcons name="account-multiple-outline" size={24} color={Colors.danger} />
+              <MaterialCommunityIcons name="shield-check" size={24} color={globalSosWatch ? Colors.success : Colors.warning} />
               <MaterialCommunityIcons name="pulse" size={20} color={Colors.border} />
             </View>
-            <Text style={styles.cardValue}>3</Text>
-            <Text style={styles.cardLabel}>Inner Circle</Text>
-            <Text style={styles.cardSub}>contacts ready</Text>
+            <Text style={styles.cardValue}>{globalSosWatch ? 'On' : 'Off'}</Text>
+            <Text style={styles.cardLabel}>Monitoring</Text>
+            <Text style={styles.cardSub}>{globalSosWatch ? 'Sensors active' : 'Turn on monitoring'}</Text>
           </View>
 
           {/* Card 3 */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <MaterialCommunityIcons name="alert-outline" size={24} color={Colors.warning} />
+              <MaterialCommunityIcons name="alert-outline" size={24} color={sosTriggered ? Colors.danger : Colors.warning} />
               <MaterialCommunityIcons name="pulse" size={20} color={Colors.border} />
             </View>
-            <Text style={styles.cardValue}>0</Text>
-            <Text style={styles.cardLabel}>Alerts Sent</Text>
-            <Text style={styles.cardSub}>All safe</Text>
+            <Text style={styles.cardValue}>{sosTriggered ? '1' : '0'}</Text>
+            <Text style={styles.cardLabel}>SOS Alerts</Text>
+            <Text style={styles.cardSub}>{sosTriggered ? `Sent at ${sosTriggered.time}` : 'All safe'}</Text>
           </View>
 
           {/* Card 4 */}
           <View style={styles.card}>
             <View style={styles.cardHeader}>
-              <MaterialCommunityIcons name="camera-outline" size={24} color={Colors.info} />
-              <MaterialCommunityIcons name="pulse" size={20} color={Colors.border} />
+              <MaterialCommunityIcons name="map-marker-outline" size={24} color={Colors.info} />
             </View>
-            <Text style={styles.cardValue}>0</Text>
-            <Text style={styles.cardLabel}>Evidence Files</Text>
-            <Text style={styles.cardSub}>No captures yet</Text>
+            <Text style={styles.cardValue} numberOfLines={1} adjustsFontSizeToFit>
+              {currentLocation ? 'Logged' : 'Waiting'}
+            </Text>
+            <Text style={styles.cardLabel}>Last Location</Text>
+            <Text style={styles.cardSub}>{currentLocation ? 'GPS Acquired' : 'Permissions check'}</Text>
           </View>
         </View>
 
@@ -95,7 +98,7 @@ const HomeScreen: React.FC = () => {
 
         <TouchableOpacity 
           style={styles.actionCard}
-          onPress={() => navigation.navigate('SOSTriggers')}
+          onPress={() => navigation.navigate('Dashboard')}
         >
           <View style={[styles.actionIconBox, { backgroundColor: Colors.emergency }]}>
             <MaterialCommunityIcons name="alert-outline" size={24} color="#FFF" />

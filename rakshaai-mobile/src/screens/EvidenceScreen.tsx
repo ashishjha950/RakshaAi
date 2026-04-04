@@ -1,13 +1,43 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Colors } from '@/theme/colors';
 import { Header } from '@/components/Header';
+import { useSafety } from '@/context/SafetyContext';
 
 const FILTERS = ['All Evidence', 'Audio', 'Video', 'Photos', 'Logs'];
 
+interface EvidenceFile {
+  id: string;
+  name: string;
+  meta: string;
+  icon: 'voicemail' | 'video' | 'file-document-outline';
+  color: string;
+}
+
 const EvidenceScreen: React.FC = () => {
+  const { sosTriggered } = useSafety();
+  const [isRecording, setIsRecording] = useState(false);
+  const [files, setFiles] = useState<EvidenceFile[]>([
+    { id: '1', name: 'incident-audio.m4a', meta: 'Recorded 2h ago', icon: 'voicemail', color: Colors.info },
+    { id: '2', name: 'location-log.csv', meta: 'Recorded 5h ago', icon: 'file-document-outline', color: Colors.success }
+  ]);
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      // Stop and mock save
+      const isSos = !!sosTriggered;
+      setFiles(prev => [{
+        id: Date.now().toString(),
+        name: `capture-${Date.now()}.mp4`,
+        meta: `Recorded just now ${isSos ? '(SOS Active)' : ''}`,
+        icon: 'video',
+        color: isSos ? Colors.emergency : Colors.info
+      }, ...prev]);
+    }
+    setIsRecording(!isRecording);
+  };
   return (
     <SafeAreaView style={styles.root}>
       <Header />
@@ -33,49 +63,55 @@ const EvidenceScreen: React.FC = () => {
           </ScrollView>
         </View>
 
-        {/* Upload Dropzone */}
-        <View style={styles.dropzone}>
-          <View style={styles.iconCircle}>
-            <MaterialCommunityIcons name="cloud-upload-outline" size={28} color={Colors.textPrimary} />
+        {/* Upload Dropzone / Recording Status */}
+        <View style={[styles.dropzone, isRecording && { borderColor: Colors.emergency }]}>
+          <View style={[styles.iconCircle, isRecording && { backgroundColor: Colors.emergency + '22' }]}>
+            <MaterialCommunityIcons 
+              name={isRecording ? "record-circle-outline" : "cloud-upload-outline"} 
+              size={28} 
+              color={isRecording ? Colors.emergency : Colors.textPrimary} 
+            />
           </View>
-          <Text style={styles.dropzoneTitle}>Tap or drag to upload evidence</Text>
-          <Text style={styles.dropzoneSub}>Supports images, video, and audio recordings</Text>
+          <Text style={styles.dropzoneTitle}>
+            {isRecording ? "Recording in progress..." : "Tap or drag to upload evidence"}
+          </Text>
+          <Text style={styles.dropzoneSub}>
+            {isRecording ? "Capturing secure video & audio" : "Supports images, video, and audio recordings"}
+          </Text>
         </View>
 
         {/* Capture Action */}
-        <TouchableOpacity style={styles.captureBtn}>
-          <MaterialCommunityIcons name="line-scan" size={20} color="#FFF" />
-          <Text style={styles.captureBtnText}>Capture New Evidence</Text>
+        <TouchableOpacity 
+          style={[styles.captureBtn, isRecording && { backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.emergency }]}
+          onPress={toggleRecording}
+        >
+          <MaterialCommunityIcons 
+            name={isRecording ? "stop-circle-outline" : "line-scan"} 
+            size={20} 
+            color={isRecording ? Colors.emergency : "#FFF"} 
+          />
+          <Text style={[styles.captureBtnText, isRecording && { color: Colors.emergency }]}>
+            {isRecording ? "Stop Recording" : "Capture New Evidence"}
+          </Text>
         </TouchableOpacity>
 
         {/* Recent Files */}
         <Text style={styles.sectionTitle}>Recent Files</Text>
         
-        <View style={styles.fileCard}>
-          <View style={[styles.fileIcon, { backgroundColor: Colors.info + '1A' }]}>
-            <MaterialCommunityIcons name="voicemail" size={24} color={Colors.info} />
+        {files.map(f => (
+          <View key={f.id} style={styles.fileCard}>
+            <View style={[styles.fileIcon, { backgroundColor: f.color + '1A' }]}>
+              <MaterialCommunityIcons name={f.icon as any} size={24} color={f.color} />
+            </View>
+            <View style={styles.fileBody}>
+              <Text style={styles.fileName}>{f.name}</Text>
+              <Text style={styles.fileMeta}>{f.meta}</Text>
+            </View>
+            <TouchableOpacity>
+              <MaterialCommunityIcons name="dots-vertical" size={24} color={Colors.textSecondary} />
+            </TouchableOpacity>
           </View>
-          <View style={styles.fileBody}>
-            <Text style={styles.fileName}>incident-audio.m4a</Text>
-            <Text style={styles.fileMeta}>Recorded 2h ago</Text>
-          </View>
-          <TouchableOpacity>
-            <MaterialCommunityIcons name="dots-vertical" size={24} color={Colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.fileCard}>
-          <View style={[styles.fileIcon, { backgroundColor: Colors.success + '1A' }]}>
-            <MaterialCommunityIcons name="file-document-outline" size={24} color={Colors.success} />
-          </View>
-          <View style={styles.fileBody}>
-            <Text style={styles.fileName}>location-log.csv</Text>
-            <Text style={styles.fileMeta}>Recorded 5h ago</Text>
-          </View>
-          <TouchableOpacity>
-            <MaterialCommunityIcons name="dots-vertical" size={24} color={Colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
+        ))}
 
       </ScrollView>
 

@@ -9,7 +9,7 @@ import { OSM_TILE_URL, DEFAULT_MAP_REGION } from '@/utils/constants';
 import { useSafety } from '@/context/SafetyContext';
 
 const SafeJourneyScreen: React.FC = () => {
-  const { currentLocation } = useSafety();
+  const { currentLocation, isJourneyActive, startJourney, stopJourney } = useSafety();
 
   const mapRegion = currentLocation
     ? {
@@ -69,19 +69,32 @@ const SafeJourneyScreen: React.FC = () => {
         {/* Bottom Sheet UI Mock */}
         <View style={styles.bottomSheet}>
           <View style={styles.pill} />
-          <Text style={styles.sheetTitle}>Start Safe Journey</Text>
-          <Text style={styles.sheetSub}>Your location is shared with trusted contacts</Text>
+          <Text style={styles.sheetTitle}>{isJourneyActive ? 'Journey Active' : 'Start Safe Journey'}</Text>
+          <Text style={styles.sheetSub}>
+            {isJourneyActive 
+              ? 'Monitoring your route for anomalies...' 
+              : 'Your location will be shared with trusted contacts'}
+          </Text>
 
           <View style={styles.sheetActionRow}>
-            <TouchableOpacity style={styles.outlineBtn}>
-              <MaterialCommunityIcons name="share-variant-outline" size={20} color={Colors.textPrimary} />
-              <Text style={styles.outlineBtnText}>Share Tracker</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.primaryBtn}>
-              <MaterialCommunityIcons name="navigation-variant" size={20} color="#FFF" />
-              <Text style={styles.primaryBtnText}>Start Journey</Text>
-            </TouchableOpacity>
+            {isJourneyActive ? (
+              <TouchableOpacity style={styles.dangerBtn} onPress={stopJourney}>
+                <MaterialCommunityIcons name="stop-circle-outline" size={20} color="#FFF" />
+                <Text style={styles.primaryBtnText}>End Journey</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <TouchableOpacity style={styles.outlineBtn}>
+                  <MaterialCommunityIcons name="share-variant-outline" size={20} color={Colors.textPrimary} />
+                  <Text style={styles.outlineBtnText}>Share Tracker</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={styles.primaryBtn} onPress={startJourney}>
+                  <MaterialCommunityIcons name="navigation-variant" size={20} color="#FFF" />
+                  <Text style={styles.primaryBtnText}>Start Journey</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </View>
       </View>
@@ -167,6 +180,21 @@ const styles = StyleSheet.create({
   },
   outlineBtnText: { fontFamily: 'Nunito_600SemiBold', fontSize: 15, color: Colors.textPrimary },
   primaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.success,
+    paddingVertical: 14,
+    borderRadius: 14,
+    shadowColor: Colors.success,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  dangerBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',

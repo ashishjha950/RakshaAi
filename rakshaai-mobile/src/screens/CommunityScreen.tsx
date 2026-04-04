@@ -55,9 +55,37 @@ const CommunityScreen: React.FC = () => {
             <Text style={styles.statLabel}>Total Support</Text>
           </View>
 
-          {/* Placeholder for actual content */}
-          <View style={styles.emptyContent}>
-            <MaterialCommunityIcons name="account-group-outline" size={48} color={Colors.border} />
+          {/* Mock SOS Events Feed */}
+          <Text style={[styles.sectionTitle, { marginTop: 24, marginBottom: 8 }]}>Recent Events Near You</Text>
+          
+          <View style={styles.eventCard}>
+            <View style={[styles.eventIcon, { backgroundColor: Colors.danger + '22' }]}>
+              <MaterialCommunityIcons name="alert" size={24} color={Colors.danger} />
+            </View>
+            <View style={styles.eventBody}>
+              <Text style={styles.eventTitle}>SOS Alert Flagged</Text>
+              <Text style={styles.eventMeta}>2 mins ago • Connaught Place (1.2km away)</Text>
+            </View>
+          </View>
+
+          <View style={styles.eventCard}>
+            <View style={[styles.eventIcon, { backgroundColor: Colors.warning + '22' }]}>
+              <MaterialCommunityIcons name="shield-alert" size={24} color={Colors.warning} />
+            </View>
+            <View style={styles.eventBody}>
+              <Text style={styles.eventTitle}>Safety Concern Reported</Text>
+              <Text style={styles.eventMeta}>15 mins ago • Hauz Khas Village (4.5km away)</Text>
+            </View>
+          </View>
+
+          <View style={styles.eventCard}>
+            <View style={[styles.eventIcon, { backgroundColor: Colors.success + '22' }]}>
+              <MaterialCommunityIcons name="check-circle" size={24} color={Colors.success} />
+            </View>
+            <View style={styles.eventBody}>
+              <Text style={styles.eventTitle}>Verified Safe Route</Text>
+              <Text style={styles.eventMeta}>1 hour ago • Shared by local community</Text>
+            </View>
           </View>
         </View>
 
@@ -128,7 +156,22 @@ const styles = StyleSheet.create({
   statValue: { fontFamily: 'Rajdhani_700Bold', fontSize: 28, color: Colors.textPrimary },
   statLabel: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
 
-  emptyContent: { height: 120, alignItems: 'center', justifyContent: 'center', marginTop: 20 },
+  sectionTitle: { fontFamily: 'Rajdhani_700Bold', fontSize: 20, color: Colors.textPrimary },
+  
+  eventCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  eventIcon: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  eventBody: { flex: 1, marginLeft: 16 },
+  eventTitle: { fontFamily: 'Nunito_600SemiBold', fontSize: 15, color: Colors.textPrimary },
+  eventMeta: { fontFamily: 'Nunito_400Regular', fontSize: 13, color: Colors.textSecondary, marginTop: 4 },
 
   fabContainer: {
     position: 'absolute',

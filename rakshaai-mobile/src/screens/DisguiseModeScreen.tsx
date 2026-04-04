@@ -120,7 +120,7 @@ const CAL_ROWS = [
 ] as const;
 
 const DisguiseModeScreen: React.FC = () => {
-  const { setSafetyMode } = useSafety();
+  const { setSafetyMode, fireSOS } = useSafety();
   const [calcState, setCalcState] = useState<CalcState>(initialCalcState);
   const [pinModalVisible, setPinModalVisible] = useState(false);
   const [pinInput, setPinInput] = useState('');
@@ -136,8 +136,14 @@ const DisguiseModeScreen: React.FC = () => {
       setCalcState(initialCalcState);
       return;
     }
+    // Stealth SOS Trigger
+    if (calcState.display === '911' && key === '=') {
+      fireSOS('disguise_trigger');
+      setCalcState(initialCalcState); // completely silent
+      return;
+    }
     setCalcState((s) => calcReduce(s, key));
-  }, [calcState.display, setSafetyMode]);
+  }, [calcState.display, setSafetyMode, fireSOS]);
 
   const startLongPress = useCallback(() => {
     pressTimer.current = setTimeout(() => {
